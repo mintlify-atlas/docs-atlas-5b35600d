@@ -1,0 +1,889 @@
+---
+title: 'Crawl'
+description: 'The Crawl class is the main entry point for loading and querying Screaming Frog crawl data. It abstracts over all supported backends (CSV, SQLite, Derby, DuckDB, and hybrid).'
+---
+
+## Class constructors
+
+All constructors are class methods on `Crawl`. Use `Crawl.load()` for auto-detected loading, or the named constructors for explicit control.
+
+### `Crawl.load()`
+
+Auto-detect and load a crawl from any supported source.
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./exports")          # CSV exports directory
+crawl = Crawl.load("./crawl.db")         # SQLite database
+crawl = Crawl.load("./crawl.duckdb")     # DuckDB analytics cache
+crawl = Crawl.load("./crawl.dbseospider") # Derby-backed crawl (default: DuckDB analysis)
+crawl = Crawl.load("./crawl.seospider")  # Screaming Frog crawl file
+crawl = Crawl.load("<uuid>", source_type="db_id")  # DB crawl ID
+```
+
+<ParamField path="path" type="str" required>
+  Path to the crawl source. Accepts a directory, file path, or DB crawl UUID. Auto-detection is based on path suffix and directory contents.
+</ParamField>
+
+<ParamField path="source_type" type="str" default="auto">
+  Force a specific loader. One of `"auto"`, `"exports"`, `"csv"`, `"duckdb"`, `"sqlite"`, `"db"`, `"derby"`, `"dbseospider"`, `"seospider"`, `"db_id"`.
+</ParamField>
+
+<ParamField path="seospider_backend" type="str" default="duckdb">
+  Backend to use when loading `.seospider` files. One of `"duckdb"`, `"derby"`, `"csv"`.
+</ParamField>
+
+<ParamField path="db_id_backend" type="str" default="duckdb">
+  Backend to use when loading by DB crawl ID. One of `"duckdb"`, `"derby"`, `"csv"`.
+</ParamField>
+
+<ParamField path="dbseospider_backend" type="str" default="duckdb">
+  Backend to use when loading `.dbseospider` files. One of `"duckdb"`, `"derby"`.
+</ParamField>
+
+<ParamField path="duckdb_path" type="str | None" default="None">
+  Path for the DuckDB analytics cache. Defaults to a sibling file next to the source.
+</ParamField>
+
+<ParamField path="duckdb_namespace" type="str | None" default="None">
+  Namespace to use within a multi-crawl DuckDB file.
+</ParamField>
+
+<ParamField path="duckdb_tabs" type="Sequence[str] | str | None" default="None">
+  Tabs to materialize into the DuckDB cache. Pass `"all"` to materialize every mapped tab.
+</ParamField>
+
+<ParamField path="duckdb_if_exists" type="str" default="auto">
+  Cache refresh strategy. `"auto"` rebuilds only when the Derby source changed. Also accepts `"replace"` or `"skip"`.
+</ParamField>
+
+<ParamField path="materialize_dbseospider" type="bool" default="True">
+  Whether to create a `.dbseospider` sidecar file when loading `.seospider` crawls.
+</ParamField>
+
+<ParamField path="csv_fallback" type="bool" default="True">
+  Enable automatic CSV export fallback for Derby-backed crawls when a tab or column is missing.
+</ParamField>
+
+<ParamField path="export_tabs" type="Sequence[str] | None" default="None">
+  Tabs to export when using CLI-backed loaders.
+</ParamField>
+
+<ParamField path="export_profile" type="str | None" default="None">
+  Named export profile. Use `"kitchen_sink"` for the bundled full-tab profile.
+</ParamField>
+
+**Returns** `Crawl`
+
+---
+
+### `Crawl.from_exports()`
+
+Load from a directory of CSV export files.
+
+```python
+crawl = Crawl.from_exports("./exports")
+```
+
+<ParamField path="export_dir" type="str" required>
+  Path to the directory containing exported `.csv` files.
+</ParamField>
+
+**Returns** `Crawl`
+
+---
+
+### `Crawl.from_database()`
+
+Load from a SQLite database file (legacy backend, limited tab support).
+
+```python
+crawl = Crawl.from_database("./crawl.db")
+```
+
+<ParamField path="db_path" type="str" required>
+  Path to the SQLite `.db` or `.sqlite` file.
+</ParamField>
+
+**Returns** `Crawl`
+
+---
+
+### `Crawl.from_duckdb()`
+
+Load from a DuckDB analytics cache file.
+
+```python
+crawl = Crawl.from_duckdb("./crawl.duckdb")
+crawl = Crawl.from_duckdb("./portfolio.duckdb", namespace="client-a")
+```
+
+<ParamField path="db_path" type="str" required>
+  Path to the `.duckdb` file.
+</ParamField>
+
+<ParamField path="namespace" type="str | None" default="None">
+  Namespace to read within a multi-crawl DuckDB file.
+</ParamField>
+
+**Returns** `Crawl`
+
+---
+
+### `Crawl.duckdb_namespaces()`
+
+List all crawl namespaces stored in a DuckDB file.
+
+```python
+namespaces = Crawl.duckdb_namespaces("./portfolio.duckdb")
+```
+
+<ParamField path="db_path" type="str" required>
+  Path to the `.duckdb` file.
+</ParamField>
+
+**Returns** `list[str]`
+
+---
+
+### `Crawl.from_derby()`
+
+Load directly from a Derby (`.dbseospider`) database.
+
+```python
+crawl = Crawl.from_derby("./crawl.dbseospider")
+crawl = Crawl.from_derby("./crawl.dbseospider", backend="derby", csv_fallback=False)
+```
+
+<ParamField path="db_path" type="str" required>
+  Path to the Derby database directory or `.dbseospider` archive.
+</ParamField>
+
+<ParamField path="backend" type="str" default="duckdb">
+  Analysis backend. `"duckdb"` (default) promotes to a DuckDB analytics cache; `"derby"` queries Derby directly.
+</ParamField>
+
+<ParamField path="duckdb_path" type="str | None" default="None">
+  Path for the DuckDB cache. Defaults to a sibling file next to the source.
+</ParamField>
+
+<ParamField path="duckdb_namespace" type="str | None" default="None">
+  Namespace for the DuckDB cache.
+</ParamField>
+
+<ParamField path="duckdb_tables" type="Sequence[str] | None" default="None">
+  Raw Derby tables to export into DuckDB.
+</ParamField>
+
+<ParamField path="duckdb_tabs" type="Sequence[str] | str | None" default="None">
+  Mapped tabs to materialize into DuckDB. Use `"all"` for every available tab.
+</ParamField>
+
+<ParamField path="duckdb_if_exists" type="str" default="auto">
+  Cache refresh strategy. `"auto"`, `"replace"`, or `"skip"`.
+</ParamField>
+
+<ParamField path="csv_fallback" type="bool" default="True">
+  Fall back to CLI CSV exports for tabs or columns unavailable in Derby.
+</ParamField>
+
+**Returns** `Crawl`
+
+---
+
+### `Crawl.from_seospider()`
+
+Load from a Screaming Frog `.seospider` crawl file. Runs the Screaming Frog CLI internally.
+
+```python
+crawl = Crawl.from_seospider("./crawl.seospider")
+crawl = Crawl.from_seospider(
+    "./crawl.seospider",
+    backend="csv",
+    export_dir="./exports",
+    export_tabs=["Internal:All", "Response Codes:All"],
+)
+```
+
+<ParamField path="crawl_path" type="str" required>
+  Path to the `.seospider` file.
+</ParamField>
+
+<ParamField path="backend" type="str" default="duckdb">
+  Backend to use. One of `"duckdb"`, `"derby"`, `"csv"`.
+</ParamField>
+
+<ParamField path="materialize_dbseospider" type="bool" default="True">
+  Create a `.dbseospider` sidecar archive next to the source crawl.
+</ParamField>
+
+<ParamField path="dbseospider_overwrite" type="bool" default="True">
+  Overwrite an existing `.dbseospider` sidecar.
+</ParamField>
+
+<ParamField path="ensure_db_mode" type="bool" default="True">
+  Temporarily set `storage.mode=DB` in `spider.config` before loading.
+</ParamField>
+
+<ParamField path="export_tabs" type="Sequence[str] | None" default="None">
+  Tabs to export when using the CSV backend.
+</ParamField>
+
+<ParamField path="export_profile" type="str | None" default="None">
+  Named export profile (e.g. `"kitchen_sink"`).
+</ParamField>
+
+**Returns** `Crawl`
+
+---
+
+### `Crawl.from_db_id()`
+
+Load a DB-mode crawl by its UUID from the local `ProjectInstanceData` directory.
+
+```python
+crawl = Crawl.from_db_id("138edb21-61d0-41cd-9e9b-725b592a471c")
+```
+
+<ParamField path="crawl_id" type="str" required>
+  The UUID of the DB-mode crawl folder inside `ProjectInstanceData`.
+</ParamField>
+
+<ParamField path="backend" type="str" default="duckdb">
+  Backend to use. One of `"duckdb"`, `"derby"`, `"csv"`.
+</ParamField>
+
+<ParamField path="project_root" type="str | None" default="None">
+  Override the `ProjectInstanceData` root directory. Defaults to the standard Screaming Frog data path.
+</ParamField>
+
+**Returns** `Crawl`
+
+---
+
+## Views and queries
+
+### `crawl.internal`
+
+Sitewide internal page view. Returns an `InternalView` object backed by the internal page model.
+
+```python
+for page in crawl.internal.filter(status_code=404):
+    print(page.address)
+```
+
+**Type** `InternalView`
+
+---
+
+### `crawl.pages()`
+
+Sitewide page view backed by the internal model. Use `.filter()` and `.select()` to narrow results.
+
+```python
+pages = crawl.pages().filter(status_code=404).collect()
+lightweight = crawl.pages().select("Address", "Status Code", "Title 1").collect()
+```
+
+**Returns** `PageView`
+
+---
+
+### `crawl.links()`
+
+Sitewide inlinks or outlinks view.
+
+```python
+inlinks = crawl.links("in").filter(status_code=404).collect()
+outlinks = crawl.links("out").collect()
+```
+
+<ParamField path="direction" type="str" default="out">
+  Link direction. `"in"` for inlinks, `"out"` for outlinks.
+</ParamField>
+
+**Returns** `LinkView`
+
+---
+
+### `crawl.tab()`
+
+Access any export tab by name (CSV filename without extension, or normalized name).
+
+```python
+for row in crawl.tab("response_codes_all"):
+    print(row["Address"], row["Status Code"])
+
+for row in crawl.tab("page_titles").filter(gui="Missing"):
+    print(row["Address"])
+```
+
+<ParamField path="name" type="str" required>
+  Tab name. Case-insensitive; `snake_case` and title-case forms accepted. Extension optional.
+</ParamField>
+
+**Returns** `TabView`
+
+---
+
+### `crawl.section()`
+
+Scope page and link views to a URL path prefix or full URL prefix.
+
+```python
+blog = crawl.section("/blog")
+blog_pages = blog.pages().collect()
+blog_inlinks = blog.links("in").collect()
+blog_tab = blog.tab("all_inlinks").collect()
+```
+
+<ParamField path="prefix" type="str" required>
+  URL path prefix (e.g. `"/blog"`) or full URL prefix (e.g. `"https://example.com/blog"`).
+</ParamField>
+
+**Returns** `CrawlSection`
+
+---
+
+### `crawl.search()`
+
+Search across the sitewide page view.
+
+```python
+matches = crawl.search("canonical", fields=["Address", "Title 1"]).collect()
+```
+
+<ParamField path="term" type="str" required>
+  Search string.
+</ParamField>
+
+<ParamField path="fields" type="Sequence[str] | None" default="None">
+  Limit search to these column names. Searches all string fields when `None`.
+</ParamField>
+
+<ParamField path="case_sensitive" type="bool" default="False">
+  Whether the search is case-sensitive.
+</ParamField>
+
+**Returns** `SearchRowView`
+
+---
+
+### `crawl.tabs`
+
+List available tab names for the current backend.
+
+```python
+print(crawl.tabs)
+```
+
+**Type** `list[str]`
+
+---
+
+### `crawl.query()`
+
+Build a chainable SQL query against a raw backend table (DB-backed crawls only).
+
+```python
+rows = (
+    crawl.query("APP", "URLS")
+    .select("ENCODED_URL", "RESPONSE_CODE")
+    .where("RESPONSE_CODE >= ?", 400)
+    .order_by("RESPONSE_CODE DESC")
+    .limit(100)
+    .collect()
+)
+```
+
+<ParamField path="schema" type="str" required>
+  Schema name (e.g. `"APP"`).
+</ParamField>
+
+<ParamField path="table" type="str" required>
+  Table name (e.g. `"URLS"`).
+</ParamField>
+
+**Returns** `QueryView`
+
+---
+
+### `crawl.raw()`
+
+Yield raw rows from a backend table as dicts. DB-backed crawls only.
+
+```python
+for row in crawl.raw("APP.URLS"):
+    print(row["ENCODED_URL"], row["RESPONSE_CODE"])
+```
+
+<ParamField path="table" type="str" required>
+  Fully qualified table name (e.g. `"APP.URLS"`).
+</ParamField>
+
+**Returns** `Iterator[dict[str, Any]]`
+
+---
+
+### `crawl.sql()`
+
+Execute a raw SQL query and yield rows as dicts. DB-backed crawls only.
+
+```python
+for row in crawl.sql(
+    "SELECT ENCODED_URL, RESPONSE_CODE FROM APP.URLS WHERE RESPONSE_CODE >= ?",
+    [400],
+):
+    print(row)
+```
+
+<ParamField path="query" type="str" required>
+  SQL query string. Use `?` for parameterized values.
+</ParamField>
+
+<ParamField path="params" type="Sequence[Any] | None" default="None">
+  Query parameters corresponding to `?` placeholders.
+</ParamField>
+
+**Returns** `Iterator[dict[str, Any]]`
+
+---
+
+## Graph helpers
+
+### `crawl.inlinks()`
+
+Return all inlinks for a given URL.
+
+```python
+for link in crawl.inlinks("https://example.com/page"):
+    print(link.source, link.anchor_text)
+```
+
+<ParamField path="url" type="str" required>
+  The destination URL to look up inlinks for.
+</ParamField>
+
+**Returns** `Iterator[Link]`
+
+---
+
+### `crawl.outlinks()`
+
+Return all outlinks from a given URL.
+
+```python
+for link in crawl.outlinks("https://example.com/page"):
+    print(link.destination)
+```
+
+<ParamField path="url" type="str" required>
+  The source URL to look up outlinks for.
+</ParamField>
+
+**Returns** `Iterator[Link]`
+
+---
+
+## Chain helpers
+
+### `crawl.redirect_chains()`
+
+Iterate redirect chain rows, optionally filtered by hop count and loop flag.
+
+```python
+for row in crawl.redirect_chains(min_hops=3, loop=False):
+    print(row["Address"], row["Number of Redirects"])
+```
+
+<ParamField path="min_hops" type="int | None" default="None">
+  Minimum number of redirect hops. `None` means no lower bound.
+</ParamField>
+
+<ParamField path="max_hops" type="int | None" default="None">
+  Maximum number of redirect hops. `None` means no upper bound.
+</ParamField>
+
+<ParamField path="loop" type="bool | None" default="None">
+  Filter by loop status. `True` returns only loops; `False` excludes loops; `None` returns all.
+</ParamField>
+
+**Returns** `Iterator[dict[str, Any]]`
+
+---
+
+### `crawl.canonical_chains()`
+
+Iterate canonical chain rows.
+
+<ParamField path="min_hops" type="int | None" default="None">Minimum number of canonical hops.</ParamField>
+<ParamField path="max_hops" type="int | None" default="None">Maximum number of canonical hops.</ParamField>
+<ParamField path="loop" type="bool | None" default="None">Filter by loop status.</ParamField>
+
+**Returns** `Iterator[dict[str, Any]]`
+
+---
+
+### `crawl.redirect_and_canonical_chains()`
+
+Iterate mixed redirect and canonical chain rows.
+
+<ParamField path="min_hops" type="int | None" default="None">Minimum total hops.</ParamField>
+<ParamField path="max_hops" type="int | None" default="None">Maximum total hops.</ParamField>
+<ParamField path="loop" type="bool | None" default="None">Filter by loop status.</ParamField>
+
+**Returns** `Iterator[dict[str, Any]]`
+
+---
+
+## Audit report helpers
+
+All report helpers return a flat `list[dict[str, Any]]` of issue rows, ready to export or load into a dataframe.
+
+### `crawl.summary()`
+
+Return a compact crawl-level summary dict with counts for pages, broken links, orphans, redirect chains, and issue families.
+
+```python
+print(crawl.summary())
+```
+
+<Note>
+  Core counts (`pages`, `tabs`, `broken_pages`) are always populated. Issue-family and chain totals may be `None` on lean DuckDB caches until those tabs are materialized.
+</Note>
+
+**Returns** `dict[str, Any]`
+
+---
+
+### `crawl.broken_links_report()`
+
+Return broken internal URLs with inlink counts and sampled inlink sources.
+
+<ParamField path="min_status" type="int" default="400">Minimum HTTP status code to include.</ParamField>
+<ParamField path="max_status" type="int" default="599">Maximum HTTP status code to include.</ParamField>
+<ParamField path="max_inlinks" type="int | None" default="25">Maximum number of sampled inlink sources per broken URL. Pass `None` to include all.</ParamField>
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.broken_inlinks_report()`
+
+Return sitewide inlinks pointing to broken destinations.
+
+<ParamField path="min_status" type="int" default="400">Minimum HTTP status code.</ParamField>
+<ParamField path="max_status" type="int" default="599">Maximum HTTP status code.</ParamField>
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.nofollow_inlinks_report()`
+
+Return sitewide inlinks marked as nofollow.
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.title_meta_audit()`
+
+Return page-level rows for missing titles and missing meta descriptions.
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.indexability_audit()`
+
+Return non-indexable pages with key indexability fields (`Indexability`, `Indexability Status`, `Canonical`, `Meta Robots`, `X-Robots-Tag`).
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.orphan_pages_report()`
+
+Return pages with no incoming internal links.
+
+<ParamField path="ignore_self_links" type="bool" default="True">Exclude self-referencing links when computing inlink counts.</ParamField>
+<ParamField path="only_indexable" type="bool" default="False">Return only indexable orphan pages.</ParamField>
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.security_issues_report()`
+
+Return rows from all available security issue tabs (missing HSTS, CSP, mixed content, insecure forms, etc.).
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.canonical_issues_report()`
+
+Return rows from all available canonical issue tabs (missing, multiple, conflicting, non-indexable, etc.).
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.hreflang_issues_report()`
+
+Return rows from all available hreflang issue tabs.
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.redirect_issues_report()`
+
+Return rows from available redirect issue tabs (redirect chains, loops, meta refresh, JS redirect).
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+### `crawl.redirect_chain_report()`
+
+Collected version of `crawl.redirect_chains()`. Returns results as a list.
+
+<ParamField path="min_hops" type="int | None" default="None">Minimum redirect hops.</ParamField>
+<ParamField path="max_hops" type="int | None" default="None">Maximum redirect hops.</ParamField>
+<ParamField path="loop" type="bool | None" default="None">Filter by loop status.</ParamField>
+
+**Returns** `list[dict[str, Any]]`
+
+---
+
+## Tab metadata
+
+### `crawl.tab_filters()`
+
+List available GUI filter names for a tab.
+
+```python
+print(crawl.tab_filters("Page Titles"))
+# ['Missing', 'Duplicate', 'Over 60 Characters', ...]
+```
+
+<ParamField path="name" type="str" required>Tab name.</ParamField>
+
+**Returns** `list[str]`
+
+---
+
+### `crawl.tab_filter_defs()`
+
+Return the full filter definition objects for a tab.
+
+<ParamField path="name" type="str" required>Tab name.</ParamField>
+
+**Returns** `list[Any]`
+
+---
+
+### `crawl.tab_columns()`
+
+Return the column names for a tab.
+
+```python
+print(crawl.tab_columns("page_titles"))
+```
+
+<ParamField path="name" type="str" required>Tab name.</ParamField>
+
+**Returns** `list[str]`
+
+---
+
+### `crawl.describe_tab()`
+
+Return a dict with `tab`, `columns`, and `filters` for a given tab name.
+
+```python
+info = crawl.describe_tab("page_titles")
+print(info["columns"], info["filters"])
+```
+
+<ParamField path="name" type="str" required>Tab name.</ParamField>
+
+**Returns** `dict[str, Any]`
+
+---
+
+## DuckDB export
+
+### `crawl.export_duckdb()`
+
+Export the current crawl into a DuckDB analytics cache file.
+
+```python
+crawl.export_duckdb("./crawl.duckdb", if_exists="auto")
+
+# Export into a shared portfolio file with a namespace
+crawl.export_duckdb("./portfolio.duckdb", namespace="client-a", if_exists="auto")
+
+# Materialize all mapped tabs
+crawl.export_duckdb("./crawl.duckdb", tabs="all")
+```
+
+<ParamField path="path" type="str" required>Destination path for the DuckDB file.</ParamField>
+<ParamField path="tables" type="Sequence[str] | None" default="None">Raw Derby tables to include.</ParamField>
+<ParamField path="tabs" type="Sequence[str] | str | None" default="None">Mapped tabs to materialize. Pass `"all"` for every available tab.</ParamField>
+<ParamField path="if_exists" type="str" default="replace">What to do when the cache already exists. One of `"replace"`, `"skip"`, `"auto"`.</ParamField>
+<ParamField path="source_label" type="str | None" default="None">Label stored in the cache to identify the crawl source.</ParamField>
+<ParamField path="namespace" type="str | None" default="None">Namespace within the DuckDB file for multi-crawl storage.</ParamField>
+
+**Returns** `Path`
+
+---
+
+### `export_duckdb_from_backend()`
+
+Export a crawl backend directly to a DuckDB file (lower-level than `crawl.export_duckdb()`). Used internally; exposed for advanced workflows.
+
+```python
+from screamingfrog import export_duckdb_from_backend
+```
+
+<ParamField path="backend" type="CrawlBackend" required>A crawl backend instance.</ParamField>
+<ParamField path="duckdb_path" type="str | Path" required>Destination path for the DuckDB file.</ParamField>
+<ParamField path="tables" type="Sequence[str] | None" default="None">Raw Derby tables to export. Defaults to `DEFAULT_DUCKDB_TABLES`.</ParamField>
+<ParamField path="tabs" type="Sequence[str] | str | None" default="None">Mapped tabs to materialize.</ParamField>
+<ParamField path="if_exists" type="str" default="replace">Cache refresh strategy: `"replace"`, `"skip"`, or `"auto"`.</ParamField>
+<ParamField path="source_label" type="str | None" default="None">Label stored in the cache to identify the crawl source.</ParamField>
+<ParamField path="namespace" type="str | None" default="None">Namespace within the DuckDB file.</ParamField>
+
+**Returns** `Path`
+
+---
+
+## Exported constants
+
+### `DEFAULT_DUCKDB_TABLES`
+
+The default set of raw Derby tables exported when creating a DuckDB cache without specifying `tables`.
+
+```python
+from screamingfrog import DEFAULT_DUCKDB_TABLES
+
+print(DEFAULT_DUCKDB_TABLES)
+# ('APP.URLS', 'APP.LINKS', 'APP.UNIQUE_URLS')
+```
+
+**Type** `tuple[str, ...]`
+
+---
+
+### `DEFAULT_DUCKDB_TABS`
+
+The default set of mapped tabs materialized when creating a DuckDB cache without specifying `tabs`.
+
+```python
+from screamingfrog import DEFAULT_DUCKDB_TABS
+
+print(DEFAULT_DUCKDB_TABS)
+# ('internal_all', 'all_inlinks', 'all_outlinks', 'redirect_chains',
+#  'canonical_chains', 'redirect_and_canonical_chains')
+```
+
+**Type** `tuple[str, ...]`
+
+---
+
+## Crawl comparison
+
+### `crawl.compare()`
+
+Compare two crawls and return structural changes as a `CrawlDiff`.
+
+```python
+old = Crawl.load("./crawl-2024-01.dbseospider")
+new = Crawl.load("./crawl-2024-02.dbseospider")
+
+diff = new.compare(old)
+print(diff.summary())
+
+for change in diff.status_changes:
+    print(change.url, change.old_status, "->", change.new_status)
+```
+
+<ParamField path="other" type="Crawl" required>The baseline crawl to compare against.</ParamField>
+<ParamField path="title_fields" type="Sequence[str] | None" default="None">Field names to use for title comparison. Defaults to `("Title 1", "Title")`.</ParamField>
+<ParamField path="redirect_fields" type="Sequence[str] | None" default="None">Field names for redirect URL comparison. Defaults to `("Redirect URL", "Redirect URI", "Redirect Destination")`.</ParamField>
+<ParamField path="redirect_type_fields" type="Sequence[str] | None" default="None">Field names for redirect type comparison. Defaults to `("Redirect Type",)`.</ParamField>
+<ParamField path="field_groups" type="dict[str, Sequence[str]] | None" default="None">Additional field groups to diff (canonical, meta description, H1-3, word count, indexability, robots directives). Pass a custom dict to override the defaults.</ParamField>
+
+**Returns** `CrawlDiff`
+
+---
+
+## Top-level helpers
+
+### `list_crawls()`
+
+Enumerate all DB-mode crawls in the local `ProjectInstanceData` directory without opening Derby.
+
+```python
+from screamingfrog import list_crawls
+
+for info in list_crawls():
+    print(info.db_id, info.url, info.urls_crawled, info.modified)
+
+latest = list_crawls()[0]
+crawl = Crawl.load(latest.db_id, source_type="db_id")
+```
+
+<ParamField path="project_root" type="str | None" default="None">
+  Override the `ProjectInstanceData` root directory.
+</ParamField>
+
+**Returns** `list[CrawlInfo]`
+
+---
+
+### `export_duckdb_from_derby()`
+
+Export a Derby crawl to a DuckDB file directly (without creating a `Crawl` instance).
+
+```python
+from screamingfrog import export_duckdb_from_derby
+
+export_duckdb_from_derby("./crawl.dbseospider", "./crawl.duckdb", if_exists="auto")
+```
+
+<ParamField path="db_path" type="str" required>Path to the Derby database directory or `.dbseospider` file.</ParamField>
+<ParamField path="duckdb_path" type="str" required>Destination path for the DuckDB file.</ParamField>
+<ParamField path="tables" type="Sequence[str] | None" default="None">Raw Derby tables to export.</ParamField>
+<ParamField path="tabs" type="Sequence[str] | None" default="None">Mapped tabs to materialize.</ParamField>
+<ParamField path="if_exists" type="str" default="auto">Cache refresh strategy.</ParamField>
+
+**Returns** `Path`
+
+---
+
+### `export_duckdb_from_db_id()`
+
+Export a DB-mode crawl by ID to a DuckDB file.
+
+```python
+from screamingfrog import export_duckdb_from_db_id
+
+export_duckdb_from_db_id(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    "./crawl.duckdb",
+    if_exists="auto",
+)
+```
+
+<ParamField path="db_id" type="str" required>The DB crawl UUID.</ParamField>
+<ParamField path="duckdb_path" type="str" required>Destination path for the DuckDB file.</ParamField>
+<ParamField path="tables" type="Sequence[str] | None" default="None">Raw Derby tables to export.</ParamField>
+<ParamField path="tabs" type="Sequence[str] | None" default="None">Mapped tabs to materialize.</ParamField>
+<ParamField path="if_exists" type="str" default="auto">Cache refresh strategy.</ParamField>
+
+**Returns** `Path`

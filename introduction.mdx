@@ -1,0 +1,64 @@
+---
+title: Introduction
+description: A Python library for working with Screaming Frog SEO Spider crawl data programmatically.
+---
+
+`screamingfrog` is a Python SDK for reading and analysing Screaming Frog SEO Spider crawl data without manual exports. It provides a DB-backed workflow built around `.dbseospider` files, DuckDB analytics, and a typed API that covers 628 mapped export surfaces.
+
+<Note>
+  This library is in **public alpha**. 601 of 628 tabs are fully mapped (15,490 of 15,589 fields). The `main` branch currently passes 195 tests (2 skipped live/optional tests).
+</Note>
+
+## What you can do
+
+<CardGroup cols={2}>
+  <Card title="Query crawl data" icon="database">
+    Load `.dbseospider`, `.seospider`, CSV exports, DuckDB, or SQLite files and query them with a consistent Python API — no manual exports required.
+  </Card>
+  <Card title="DuckDB analytics" icon="bolt">
+    Use DuckDB as the default analysis engine for fast, columnar queries across large crawls. Export multi-crawl portfolios into a single `.duckdb` file.
+  </Card>
+  <Card title="628 mapped tabs" icon="table">
+    Access all 628 Screaming Frog export and report surfaces through a unified interface, including page titles, response codes, hreflang, redirects, and more.
+  </Card>
+  <Card title="Crawl diff" icon="arrows-left-right">
+    Compare two crawls to detect status, title, redirect, canonical, and other field changes across a full site.
+  </Card>
+  <Card title="Audit helpers" icon="magnifying-glass">
+    Run ready-made audits for broken links, title and meta issues, indexability, orphan pages, redirect chains, security, canonical, and hreflang.
+  </Card>
+  <Card title="CLI wrapper" icon="terminal">
+    Start crawls, trigger exports, and package `.dbseospider` files directly from Python using the bundled Screaming Frog CLI wrappers.
+  </Card>
+</CardGroup>
+
+## Supported crawl formats
+
+| Format | Notes |
+|---|---|
+| `.dbseospider` | Zip archive of a DB-mode crawl folder. Default analysis backend is DuckDB. |
+| `.seospider` | Screaming Frog native crawl file. Converted to DB + DuckDB on load by default. |
+| DuckDB (`.duckdb`) | Pre-built analytics cache. Fastest path for repeat analysis. |
+| SQLite (`.db`) | Supports a subset of high-value tabs (response codes, titles, meta descriptions, `internal_all`). |
+| CSV exports directory | Any folder of `*.csv` files exported from the Screaming Frog UI or CLI. |
+| DB crawl ID | UUID-based crawl ID from the local `ProjectInstanceData` directory. |
+
+## Known limitations
+
+- Title and meta-description pixel-width filters are not implemented yet.
+- Some hreflang edge cases do not have exact Derby parity (`incorrect language-code` cases).
+- `.seospider` conversion requires a local Screaming Frog CLI install.
+- `raw()` and `sql()` are not supported for CSV/CLI export backends.
+- Some link metrics (Link Score, % of Total, JS outlink counts) are not mapped in Derby yet.
+- SQLite backend supports only a small set of tabs.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the package from PyPI, set up Java for Derby support, and configure environment variables.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Load your first crawl, filter pages, access tabs, and run an audit in minutes.
+  </Card>
+</CardGroup>

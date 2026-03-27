@@ -1,0 +1,114 @@
+---
+title: Installation
+description: Install the screamingfrog Python library from PyPI or from the Git repository, and configure the Java runtime for Derby support.
+---
+
+## Install from PyPI
+
+The recommended install is from PyPI. Python 3.10 or later is required.
+
+```bash
+python -m pip install screamingfrog
+```
+
+Derby support (`.dbseospider`), DuckDB export, and `.seospiderconfig` writing are all included in the base install.
+
+## Install from Git
+
+To get the latest unreleased changes from the `main` branch:
+
+```bash
+python -m pip install "git+https://github.com/Amaculus/screaming-frog-api.git@main"
+```
+
+For local development from a clone:
+
+```bash
+python -m pip install -e .[dev]
+```
+
+## Optional extras
+
+The base install already bundles all required dependencies. The optional extras below exist if you need to install components in isolation or want to constrain your environment.
+
+| Extra | Installs | Use when |
+|---|---|---|
+| `[dev]` | `pytest`, `pytest-cov` | Contributing or running the test suite |
+| `[derby]` | `jaydebeapi`, `JPype1` | Derby JDBC driver only (already in base) |
+| `[config]` | `sf-config-builder` | Config patching only (already in base) |
+| `[duckdb]` | `duckdb>=1.5.0` | DuckDB only (already in base) |
+| `[alpha]` | All of the above | Full install as a single named extra |
+
+```bash
+# Example: install just the dev extra
+python -m pip install "screamingfrog[dev]"
+```
+
+## Java runtime (required for Derby)
+
+Bundled Derby jars (Apache Derby 10.17.1.0) are included with the package, so you do not need to supply `DERBY_JAR`. However, you still need a **Java runtime** (`java` / `java.exe`) available in your environment to use `.dbseospider` or `.seospider` crawls.
+
+If Java is missing, Derby loads raise:
+
+```
+RuntimeError: Java runtime not found. Set JAVA_HOME or add java to PATH.
+```
+
+### Check whether Java is available
+
+```bash
+java -version
+```
+
+### Automatic detection on Windows
+
+If Screaming Frog desktop is installed, the library automatically tries these paths before checking `PATH` or `JAVA_HOME`:
+
+- `C:\Program Files (x86)\Screaming Frog SEO Spider\jre`
+- `C:\Program Files\Screaming Frog SEO Spider\jre`
+
+If those paths exist, no further configuration is needed.
+
+### Set JAVA_HOME manually
+
+If Java is not found automatically, install a JRE or JDK and point `JAVA_HOME` at it.
+
+<Tabs>
+  <Tab title="Windows (PowerShell)">
+    ```powershell
+    $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+    $env:Path = "$env:JAVA_HOME\bin;$env:Path"
+    ```
+  </Tab>
+  <Tab title="macOS / Linux (bash)">
+    ```bash
+    export JAVA_HOME="/usr/lib/jvm/java-21-openjdk"
+    export PATH="$JAVA_HOME/bin:$PATH"
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  To make these changes permanent on Windows, set them in **System Properties → Environment Variables**. On macOS/Linux, add the `export` lines to your shell profile (e.g., `~/.bashrc` or `~/.zshrc`).
+</Tip>
+
+## Environment variables
+
+The library reads several optional environment variables at runtime.
+
+| Variable | Purpose |
+|---|---|
+| `SCREAMINGFROG_CLI` | Path to the Screaming Frog CLI executable when it is not in a standard install location. |
+| `SCREAMINGFROG_MAPPING` | Path to a custom `mapping.json` file (overrides the bundled Derby tab mapping). |
+| `SCREAMINGFROG_PROJECT_DIR` | Path to the Screaming Frog `ProjectInstanceData` directory when it is not in the default location. |
+| `DERBY_JAR` | Path to a Derby JDBC jar to use instead of the bundled jars. |
+| `JAVA_HOME` | Root directory of the Java installation. Used when `java` is not on `PATH`. |
+
+```bash
+# Example: point at a custom Screaming Frog CLI path
+export SCREAMINGFROG_CLI="/opt/screaming-frog/ScreamingFrogSEOSpider"
+```
+
+<Note>
+  Third-party notices for Apache Derby are included in `screamingfrog/vendor/derby/NOTICE` inside the installed package.
+</Note>

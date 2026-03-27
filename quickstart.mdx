@@ -1,80 +1,217 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Load a Screaming Frog crawl, filter pages, access tabs, and run your first audit in a few lines of Python.
 ---
 
-## Get started in three steps
+<Steps>
+  <Step title="Install the package">
+    Install `screamingfrog` from PyPI. Python 3.10 or later is required.
 
-Get your documentation site running locally and make your first customization.
+    ```bash
+    python -m pip install screamingfrog
+    ```
 
-### Step 1: Set up your local environment
+    For `.dbseospider` and `.seospider` crawls you also need a Java runtime available. See [Installation](/installation#java-runtime-required-for-derby) for details.
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Load a crawl">
+    `Crawl.load` accepts several source formats. Pass the path to your crawl file or export directory.
 
-### Step 2: Deploy your changes
+    <CodeGroup>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```python .dbseospider (recommended)
+    from screamingfrog import Crawl
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    # Derby .dbseospider -> auto-promotes to a sibling DuckDB cache by default
+    crawl = Crawl.load("./crawl.dbseospider")
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```python CSV exports directory
+    from screamingfrog import Crawl
 
-### Step 3: Go live
+    # Folder of *.csv files exported from the Screaming Frog UI or CLI
+    crawl = Crawl.load("./exports")
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```python DuckDB fast path
+    from screamingfrog import Crawl
+
+    # Pre-built DuckDB analytics cache — fastest for repeat analysis
+    crawl = Crawl.load("./crawl.duckdb")
+    ```
+
+    ```python SQLite
+    from screamingfrog import Crawl
+
+    crawl = Crawl.load("./crawl.db")
+    ```
+
+    </CodeGroup>
+
+    <Tip>
+      Use `list_crawls()` to discover DB-mode crawls stored in your local Screaming Frog `ProjectInstanceData` directory without opening Derby or starting Java.
+
+      ```python
+      from screamingfrog import list_crawls
+
+      for info in list_crawls():
+          print(info.db_id, info.url, info.urls_crawled, info.modified)
+
+      # Load the most recently modified crawl
+      latest = list_crawls()[0]
+      crawl = Crawl.load(latest.db_id, source_type="db_id")
+      ```
+
+      `list_crawls()` returns `CrawlInfo` objects with `db_id`, `url`, `urls_crawled`, `percent_complete`, `modified`, and `path`.
+    </Tip>
+  </Step>
+
+  <Step title="Filter pages">
+    Use `crawl.pages()` for a sitewide page view with ergonomic filtering, or `crawl.internal` for the typed internal view.
+
+    ```python
+    from screamingfrog import Crawl
+
+    crawl = Crawl.load("./crawl.dbseospider")
+
+    # All 404 pages
+    pages_404 = crawl.pages().filter(status_code=404).collect()
+
+    # Print each address
+    for page in crawl.internal.filter(status_code=404):
+        print(page.address)
+
+    # Narrow projection: only the fields you need
+    lightweight = (
+        crawl.pages()
+        .select("Address", "Status Code", "Title 1")
+        .filter(status_code=404)
+        .collect()
+    )
+    ```
+
+    `collect()` returns results as a list. All view objects are also iterable directly.
+  </Step>
+
+  <Step title="Access a specific tab">
+    Use `crawl.tab()` to access any of the 628 mapped export surfaces by name. Tab names accept the export filename with or without the `.csv` extension.
+
+    ```python
+    from screamingfrog import Crawl
+
+    crawl = Crawl.load("./crawl.dbseospider")
+
+    # List available tabs
+    print(crawl.tabs)
+
+    # Iterate a tab
+    for row in crawl.tab("response_codes_all"):
+        print(row["Address"], row["Status Code"])
+
+    # Filter by column value
+    for row in crawl.tab("internal_all").filter(status_code="404"):
+        print(row["Address"])
+
+    # Apply a GUI filter (where supported)
+    for row in crawl.tab("page_titles").filter(gui="Missing"):
+        print(row["Address"], row["Title 1"])
+    ```
+
+    <Note>
+      For exact GUI filter behaviour, use CSV exports (e.g. `export_profile="kitchen_sink"`). Derby natively supports a growing subset of GUI filters.
+    </Note>
+  </Step>
+
+  <Step title="Run an audit">
+    Thin audit helpers cover common SEO workflows out of the box.
+
+    ```python
+    from screamingfrog import Crawl
+
+    crawl = Crawl.load("./crawl.dbseospider")
+
+    # Broken internal links with inlink counts and sampled sources
+    broken = crawl.broken_links_report()
+
+    # Missing titles and missing meta descriptions
+    title_meta = crawl.title_meta_audit()
+
+    # Non-indexable pages with the fields that explain why
+    non_indexable = crawl.indexability_audit()
+
+    # Redirect chains with 3 or more hops
+    chains = crawl.redirect_chain_report(min_hops=3)
+
+    # Orphan pages (no inlinks, indexable only)
+    orphans = crawl.orphan_pages_report(only_indexable=True)
+
+    # Issue family reports
+    security_issues = crawl.security_issues_report()
+    canonical_issues = crawl.canonical_issues_report()
+    hreflang_issues = crawl.hreflang_issues_report()
+    redirect_issues = crawl.redirect_issues_report()
+    ```
+  </Step>
+</Steps>
+
+## DuckDB fast path for large crawls
+
+For large crawls or repeated analysis, export to a DuckDB cache first and load from it on subsequent runs. DuckDB is the default analysis engine for all DB-backed workflows.
+
+```python
+from screamingfrog import Crawl
+
+# Load from Derby source once
+derby_crawl = Crawl.load(
+    "./crawl.dbseospider",
+    dbseospider_backend="derby",
+    csv_fallback=False,
+)
+
+# Export to a DuckDB cache
+derby_crawl.export_duckdb("./crawl.duckdb", if_exists="auto")
+
+# Load from DuckDB for fast repeat queries
+fast = Crawl.load("./crawl.duckdb")
+
+pages_404 = fast.pages().filter(status_code=404).collect()
+lightweight = fast.pages().select("Address", "Status Code", "Title 1").collect()
+broken_inlinks = (
+    fast.links("in")
+    .select("Source", "Address", "Status Code")
+    .filter(status_code=404)
+    .collect()
+)
+```
+
+You can also store multiple crawls in a single `.duckdb` file using namespaces:
+
+```python
+from screamingfrog import Crawl
+
+crawl_a = Crawl.load("./crawl-client-a.dbseospider")
+crawl_b = Crawl.load("./crawl-client-b.dbseospider")
+
+crawl_a.export_duckdb("./portfolio.duckdb", namespace="client-a", if_exists="auto")
+crawl_b.export_duckdb("./portfolio.duckdb", namespace="client-b", if_exists="auto")
+
+namespaces = Crawl.duckdb_namespaces("./portfolio.duckdb")
+client_a = Crawl.from_duckdb("./portfolio.duckdb", namespace="client-a")
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Crawl diff" icon="arrows-left-right">
+    Compare two crawls with `new.compare(old)` to surface status, title, redirect, and canonical changes across a full site.
+  </Card>
+  <Card title="Generic tab access" icon="table">
+    Use `crawl.tab()`, `crawl.tab_columns()`, and `crawl.describe_tab()` to explore any of the 628 mapped export surfaces.
+  </Card>
+  <Card title="Raw SQL" icon="code">
+    Use `crawl.sql()` and `crawl.query()` for direct Derby/DuckDB access when mapped fields are not enough.
+  </Card>
+  <Card title="CLI wrapper" icon="terminal">
+    Start crawls and trigger exports programmatically with `start_crawl()` and `export_crawl()`.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

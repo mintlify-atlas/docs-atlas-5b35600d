@@ -1,0 +1,151 @@
+---
+title: Raw SQL
+description: Escape hatches for advanced users — raw table iteration, SQL passthrough, and a chainable query builder for Derby and SQLite backends.
+---
+
+Mapped fields cover the vast majority of use cases. When you need immediate access to Derby or SQLite columns that mappings do not yet cover, three escape hatches are available.
+
+<Warning>
+`raw()`, `sql()`, and `crawl.query()` are only supported on **Derby** and **SQLite** backends. CSV and CLI export backends do not support SQL execution.
+</Warning>
+
+## Raw table iteration
+
+`crawl.raw(table)` iterates every row from a backend table as plain dicts, using the native column names from the database:
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider", csv_fallback=False)
+
+for row in crawl.raw("APP.URLS"):
+    print(row["ENCODED_URL"], row["RESPONSE_CODE"])
+```
+
+<Note>
+Raw column names vary by backend and Screaming Frog version. Use `crawl.sql("SELECT * FROM APP.URLS FETCH FIRST 1 ROWS ONLY", [])` to inspect available columns before building a query.
+</Note>
+
+## SQL passthrough
+
+`crawl.sql(query, params)` passes a raw SQL string directly to the backend engine:
+
+```python
+for row in crawl.sql(
+    "SELECT ENCODED_URL, RESPONSE_CODE FROM APP.URLS WHERE RESPONSE_CODE >= ?",
+    [400],
+):
+    print(row)
+```
+
+Use `?` placeholders and pass parameters as a list to avoid SQL injection. Derby uses `FETCH FIRST n ROWS ONLY` syntax for limits:
+
+```python
+for row in crawl.sql(
+    "SELECT ENCODED_URL, RESPONSE_CODE FROM APP.URLS "
+    "WHERE RESPONSE_CODE >= ? "
+    "FETCH FIRST 100 ROWS ONLY",
+    [400],
+):
+    print(row)
+```
+
+## Query builder
+
+`crawl.query(schema, table)` returns a `QueryView` — a chainable query builder that constructs SQL without requiring you to write full query strings.
+
+### Basic example
+
+```python
+rows = (
+    crawl.query("APP", "URLS")
+    .select("ENCODED_URL", "RESPONSE_CODE", "TITLE_1")
+    .where("RESPONSE_CODE >= ?", 400)
+    .order_by("RESPONSE_CODE DESC", "ENCODED_URL ASC")
+    .limit(100)
+    .collect()
+)
+```
+
+### Available QueryView methods
+
+<CardGroup cols={2}>
+  <Card title=".select(*columns)" icon="columns">
+    Choose which columns to return. Defaults to `*`.
+  </Card>
+  <Card title=".where(clause, *params)" icon="filter">
+    Add a `WHERE` condition. Use `?` for parameterised values. Multiple `.where()` calls are combined with `AND`.
+  </Card>
+  <Card title=".group_by(*columns)" icon="layer-group">
+    Add a `GROUP BY` clause.
+  </Card>
+  <Card title=".having(clause, *params)" icon="filter">
+    Add a `HAVING` condition for aggregated results. Use `?` for parameterised values.
+  </Card>
+  <Card title=".order_by(*clauses)" icon="arrow-up-down">
+    Add an `ORDER BY` clause. Accepts strings like `"RESPONSE_CODE DESC"`.
+  </Card>
+  <Card title=".limit(n)" icon="arrow-down-01">
+    Limit the number of rows returned.
+  </Card>
+</CardGroup>
+
+### Collecting results
+
+```python
+# List of dicts
+rows = query.collect()
+
+# First row only
+first = query.first()
+
+# DataFrames (requires optional dependencies)
+df = query.to_pandas()
+df_polars = query.to_polars()
+```
+
+### Inspecting the generated SQL
+
+Use `.to_sql()` to see the SQL string and parameter list before executing:
+
+```python
+query = (
+    crawl.query("APP", "URLS")
+    .select("ENCODED_URL", "RESPONSE_CODE")
+    .where("RESPONSE_CODE >= ?", 400)
+    .limit(50)
+)
+
+sql, params = query.to_sql()
+print(sql)
+# SELECT ENCODED_URL, RESPONSE_CODE FROM APP.URLS
+# WHERE (RESPONSE_CODE >= ?) FETCH FIRST 50 ROWS ONLY
+print(params)
+# [400]
+```
+
+## Grouping and aggregation example
+
+```python
+status_counts = (
+    crawl.query("APP", "URLS")
+    .select("RESPONSE_CODE", "COUNT(*) AS count")
+    .where("RESPONSE_CODE >= ?", 400)
+    .group_by("RESPONSE_CODE")
+    .having("COUNT(*) > ?", 5)
+    .order_by("count DESC")
+    .collect()
+)
+```
+
+## Backend compatibility
+
+| Method | Derby | SQLite | CSV / CLI export |
+|--------|-------|--------|------------------|
+| `crawl.raw()` | Yes | Yes | No |
+| `crawl.sql()` | Yes | Yes | No |
+| `crawl.query()` | Yes | Yes | No |
+
+<Tip>
+For DuckDB-backed crawls, use the high-level views (`crawl.pages()`, `crawl.links()`, `crawl.tab()`) instead. DuckDB does not expose `raw()` / `sql()` via the mapped interface — fall back to Derby or use direct DuckDB SQL via the standalone `export_duckdb_from_derby` helpers.
+</Tip>

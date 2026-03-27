@@ -1,97 +1,59 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Screaming Frog API"
+description: "A Python library for querying Screaming Frog SEO Spider crawl data programmatically — no manual exports required."
 ---
 
-## Setting up
+Query Screaming Frog crawl data directly from Python. Load `.dbseospider`, `.seospider`, CSV exports, DuckDB, or SQLite files and access all 628+ mapped GUI tabs without opening the Screaming Frog UI.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install via pip and set up your Java runtime for Derby support
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Load a crawl and run your first query in minutes
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Loading Crawls" icon="folder-open" href="/loading/overview">
+    Load from .dbseospider, CSV exports, DuckDB, or live DB crawl IDs
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/crawl">
+    Full method signatures for the Crawl class and all view types
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What you can do
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Query pages and links" icon="magnifying-glass" href="/querying/pages-and-links">
+    Filter by status code, URL prefix, rel attribute, and more
+  </Card>
+  <Card title="Access any GUI tab" icon="table" href="/querying/tabs">
+    Access all 628+ Screaming Frog tabs without exporting CSVs
+  </Card>
+  <Card title="DuckDB analytics" icon="database" href="/querying/duckdb-analytics">
+    Fast analytics cache for large crawls with namespace support
+  </Card>
+  <Card title="Crawl diff" icon="code-compare" href="/reports/crawl-diff">
+    Compare two crawls to detect status, title, and redirect changes
+  </Card>
+  <Card title="Audit helpers" icon="triangle-exclamation" href="/reports/audit-helpers">
+    Broken links, orphan pages, indexability, title/meta audits
+  </Card>
+  <Card title="Chain analysis" icon="link" href="/reports/chain-helpers">
+    Detect long redirect and canonical chains across your site
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Supported crawl sources
 
-## Need inspiration?
+| Source | Format | Backend |
+|--------|--------|---------|
+| CSV export folder | `./exports/` | CSV |
+| DB-mode crawl archive | `./crawl.dbseospider` | Derby / DuckDB |
+| Screaming Frog project | `./crawl.seospider` | Derby / DuckDB / CSV |
+| DuckDB analytics cache | `./crawl.duckdb` | DuckDB |
+| SQLite database | `./crawl.db` | SQLite |
+| Live DB crawl ID | UUID string | Derby / DuckDB |
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Note>
+  Derby support requires a Java runtime (`java` on your `PATH` or `JAVA_HOME` set). See [Installation](/installation) for setup details.
+</Note>

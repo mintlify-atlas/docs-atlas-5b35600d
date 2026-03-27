@@ -1,0 +1,393 @@
+---
+title: Audit helpers
+description: Pre-built report helpers on the Crawl object for common SEO audit workflows — broken links, title and meta issues, indexability, orphans, security, canonicals, hreflang, and redirects.
+---
+
+Audit helpers are thin, opinionated wrappers that surface the most common SEO issues without requiring you to remember tab names or write manual filters. Each helper returns a `list[dict]` you can iterate, export, or pass straight into a dataframe.
+
+<Note>
+  All helpers work with any crawl backend (DuckDB, Derby, CSV). On lean DuckDB caches, helpers read directly from the prewarmed Derby source so they do not force a full tab materialization first.
+</Note>
+
+## Broken link helpers
+
+### `broken_links_report`
+
+Returns broken internal URLs with inlink counts and sampled inlink sources.
+
+```python
+crawl.broken_links_report(
+    min_status: int = 400,
+    max_status: int = 599,
+    max_inlinks: int = 25,
+) -> list[dict]
+```
+
+**Parameters**
+
+<AccordionGroup>
+  <Accordion title="min_status">
+    Lower bound of the HTTP status code range to flag. Defaults to `400`.
+  </Accordion>
+  <Accordion title="max_status">
+    Upper bound of the HTTP status code range to flag. Defaults to `599`.
+  </Accordion>
+  <Accordion title="max_inlinks">
+    Maximum number of sampled inlink sources to include per broken URL. Defaults to `25`.
+  </Accordion>
+</AccordionGroup>
+
+Each row includes the broken URL, its HTTP status code, the total inlink count, and up to `max_inlinks` sampled source URLs.
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+broken = crawl.broken_links_report()
+for row in broken:
+    print(row["Address"], row.get("Status Code"))
+```
+
+To narrow to only client errors, or to widen to all 5xx responses:
+
+```python
+# Only 4xx client errors
+client_errors = crawl.broken_links_report(min_status=400, max_status=499)
+
+# Only 5xx server errors, show up to 50 inlink sources per URL
+server_errors = crawl.broken_links_report(min_status=500, max_status=599, max_inlinks=50)
+```
+
+The example script in `examples/broken_links_report.py` shows how to print inlink sources for each broken URL:
+
+```python
+from screamingfrog import Crawl
+import sys
+
+crawl = Crawl.load(sys.argv[1] if len(sys.argv) > 1 else "./crawl.dbseospider")
+
+for row in crawl.tab("response_codes_internal_client_error_(4xx)"):
+    url = str(row.get("Address") or "")
+    code = row.get("Status Code")
+    if not url:
+        continue
+    print(f"{code}: {url}")
+    inlinks = list(crawl.inlinks(url))
+    for link in inlinks[:25]:
+        print(f"  <- {link.source} ({link.anchor_text or ''})")
+    if len(inlinks) > 25:
+        print(f"  ... {len(inlinks) - 25} more")
+```
+
+---
+
+### `broken_inlinks_report`
+
+Returns the inlinks (source → destination pairs) that point to broken destinations.
+
+```python
+crawl.broken_inlinks_report(
+    min_status: int = 400,
+    max_status: int = 599,
+) -> list[dict]
+```
+
+**Parameters**
+
+<AccordionGroup>
+  <Accordion title="min_status">
+    Lower bound of the HTTP status code range. Defaults to `400`.
+  </Accordion>
+  <Accordion title="max_status">
+    Upper bound of the HTTP status code range. Defaults to `599`.
+  </Accordion>
+</AccordionGroup>
+
+Each row describes an inlink edge — the source page, the broken destination URL, and the HTTP status of the destination.
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.broken_inlinks_report():
+    print(row.get("Source"), "->", row.get("Address"), row.get("Status Code"))
+```
+
+---
+
+### `nofollow_inlinks_report`
+
+Returns all inlinks that carry a `nofollow` rel attribute.
+
+```python
+crawl.nofollow_inlinks_report() -> list[dict]
+```
+
+Each row includes the source URL, destination URL, anchor text, and the `Follow` / `Rel` fields.
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.nofollow_inlinks_report():
+    print(row.get("Source"), "->", row.get("Address"), row.get("Rel"))
+```
+
+---
+
+## Content helpers
+
+### `title_meta_audit`
+
+Surfaces pages with missing titles or missing meta descriptions as flat issue rows.
+
+```python
+crawl.title_meta_audit() -> list[dict]
+```
+
+Each row includes at minimum the `Address` and an `Issue` field describing what is missing (`Missing Title`, `Missing Meta Description`, etc.).
+
+<Tip>
+  This helper runs DuckDB-first when `internal_all` is already cached, and falls back to the high-level internal model on lean caches — so it is fast regardless of cache state.
+</Tip>
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.title_meta_audit():
+    print(row.get("Address"), "|", row.get("Issue"))
+```
+
+The `examples/title_meta_audit.py` script shows a manual fallback approach that also works against CSV exports:
+
+```python
+from screamingfrog import Crawl
+import sys
+
+crawl = Crawl.load(sys.argv[1] if len(sys.argv) > 1 else "./crawl.dbseospider")
+
+# Missing titles — tries the page_titles_missing tab first, falls back to internal scan
+print("Missing titles:")
+try:
+    for row in crawl.tab("page_titles_missing"):
+        address = row.get("Address")
+        if address:
+            print(f"  {address}")
+except Exception:
+    for page in crawl.internal:
+        title = page.data.get("Title 1") or page.data.get("Title")
+        if not title:
+            print(f"  {page.address}")
+
+# Missing meta descriptions
+print("\nMissing meta descriptions:")
+try:
+    for row in crawl.tab("meta_description_missing"):
+        address = row.get("Address")
+        if address:
+            print(f"  {address}")
+except Exception:
+    for page in crawl.internal:
+        meta = page.data.get("Meta Description 1") or page.data.get("Meta Description")
+        if not meta:
+            print(f"  {page.address}")
+```
+
+---
+
+## Indexability helper
+
+### `indexability_audit`
+
+Returns non-indexable pages with the key indexability fields that explain why.
+
+```python
+crawl.indexability_audit() -> list[dict]
+```
+
+Typical fields in each row: `Address`, `Indexability`, `Indexability Status`, `Meta Robots 1`, `X-Robots-Tag 1`, `Canonical Link Element 1`.
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.indexability_audit():
+    print(row.get("Address"), "|", row.get("Indexability Status"))
+```
+
+To group non-indexable pages by reason:
+
+```python
+from collections import Counter
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+counts = Counter(
+    row.get("Indexability Status", "Unknown")
+    for row in crawl.indexability_audit()
+)
+for reason, n in counts.most_common():
+    print(f"{n:>6}  {reason}")
+```
+
+---
+
+## Orphan pages helper
+
+### `orphan_pages_report`
+
+Returns pages that have no internal inlinks (i.e., orphaned from the crawl graph).
+
+```python
+crawl.orphan_pages_report(
+    ignore_self_links: bool = True,
+    only_indexable: bool = False,
+) -> list[dict]
+```
+
+**Parameters**
+
+<AccordionGroup>
+  <Accordion title="ignore_self_links">
+    When `True` (default), self-referencing links are excluded so a page that only links to itself is still treated as an orphan.
+  </Accordion>
+  <Accordion title="only_indexable">
+    When `True`, only indexable orphan pages are returned. Defaults to `False` (all orphans regardless of indexability).
+  </Accordion>
+</AccordionGroup>
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+# All orphan pages
+orphans = crawl.orphan_pages_report()
+
+# Indexable orphans only
+indexable_orphans = crawl.orphan_pages_report(only_indexable=True)
+
+for row in indexable_orphans:
+    print(row.get("Address"))
+```
+
+---
+
+## Issue-family helpers
+
+The following helpers map directly to the corresponding issue families in the Screaming Frog UI. Each returns a flat `list[dict]`.
+
+<Info>
+  On DuckDB caches, these helpers read issue relations directly when they exist, avoiding redundant tab materialization.
+</Info>
+
+### `security_issues_report`
+
+Returns pages with security-related issues (e.g., mixed content, missing HTTPS).
+
+```python
+crawl.security_issues_report() -> list[dict]
+```
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.security_issues_report():
+    print(row.get("Address"), row.get("Issue"))
+```
+
+---
+
+### `canonical_issues_report`
+
+Returns pages with canonical issues (e.g., non-indexable canonicalised pages, canonical points to redirect).
+
+```python
+crawl.canonical_issues_report() -> list[dict]
+```
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.canonical_issues_report():
+    print(row.get("Address"), row.get("Canonical Link Element 1"))
+```
+
+---
+
+### `hreflang_issues_report`
+
+Returns pages with hreflang issues (e.g., missing return tags, incorrect language codes).
+
+```python
+crawl.hreflang_issues_report() -> list[dict]
+```
+
+<Warning>
+  Some hreflang edge cases (specifically `incorrect language-code` cases) do not yet have exact Derby parity and may differ slightly from the Screaming Frog UI.
+</Warning>
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.hreflang_issues_report():
+    print(row.get("Address"), row.get("Issue"))
+```
+
+---
+
+### `redirect_issues_report`
+
+Returns pages with redirect issues (e.g., redirect chains, redirect loops, broken redirects).
+
+```python
+crawl.redirect_issues_report() -> list[dict]
+```
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.redirect_issues_report():
+    print(row.get("Address"), row.get("Redirect URL"), row.get("Status Code"))
+```
+
+---
+
+## Working with results
+
+All helpers return a plain `list[dict]`, so you can pass them directly to pandas or polars:
+
+```python
+import pandas as pd
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+df = pd.DataFrame(crawl.broken_links_report())
+print(df.groupby("Status Code").size())
+```
+
+You can also use `crawl.summary()` for a fast top-level count of issues without iterating every row:
+
+```python
+print(crawl.summary())
+```
+
+<Note>
+  Issue-family and chain totals in `summary()` may be `None` on lean DuckDB caches until those tab families are materialized.
+</Note>

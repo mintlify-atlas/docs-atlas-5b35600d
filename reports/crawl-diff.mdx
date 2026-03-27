@@ -1,0 +1,271 @@
+---
+title: Crawl diff
+description: Compare two crawls to detect added, removed, and changed pages — including status, title, redirect, canonical, meta, heading, word count, indexability, and robots changes.
+---
+
+The crawl diff feature lets you compare any two `Crawl` objects and get a structured view of everything that changed between them. It is designed for crawl-over-crawl monitoring: weekly checks, pre/post-deploy audits, or migration QA.
+
+## Basic usage
+
+```python
+from screamingfrog import Crawl
+
+old = Crawl.load("./crawl-2024-01.dbseospider")
+new = Crawl.load("./crawl-2024-02.dbseospider")
+
+diff = new.compare(old)
+
+print(diff.summary())
+
+for change in diff.status_changes[:5]:
+    print(change.url, change.old_status, "->", change.new_status)
+```
+
+The example script at `examples/crawl_diff.py` shows the full pattern:
+
+```python
+from screamingfrog import Crawl
+import sys
+
+if len(sys.argv) < 3:
+    print("Usage: python crawl_diff.py <old_crawl> <new_crawl>")
+    sys.exit(1)
+
+old_path, new_path = sys.argv[1], sys.argv[2]
+old = Crawl.load(old_path)
+new = Crawl.load(new_path)
+
+diff = new.compare(old)
+
+print(f"Added: {len(diff.added_pages)}")
+print(f"Removed: {len(diff.removed_pages)}")
+print(f"Status changes: {len(diff.status_changes)}")
+print(f"Title changes: {len(diff.title_changes)}")
+print(f"Redirect changes: {len(diff.redirect_changes)}")
+print(f"Field changes: {len(diff.field_changes)}")
+
+for change in diff.status_changes[:10]:
+    print(f"STATUS {change.url} {change.old_status} -> {change.new_status}")
+
+for change in diff.field_changes[:10]:
+    print(f"FIELD {change.field} {change.url} {change.old_value} -> {change.new_value}")
+```
+
+## `compare` method
+
+```python
+new_crawl.compare(
+    other: Crawl,
+    title_fields: list[str] | None = None,
+    redirect_fields: list[str] | None = None,
+    redirect_type_fields: list[str] | None = None,
+    field_groups: list[str] | None = None,
+) -> CrawlDiff
+```
+
+Call `compare` on the **newer** crawl and pass the **older** crawl as `other`. The diff is always expressed as changes from `other` to `self`.
+
+**Parameters**
+
+<AccordionGroup>
+  <Accordion title="title_fields">
+    List of field names to treat as the page title for comparison. Defaults to `["Title 1"]`. Override if your crawl exports a custom title extraction.
+
+    ```python
+    diff = new.compare(old, title_fields=["Title 1", "og:title"])
+    ```
+  </Accordion>
+  <Accordion title="redirect_fields">
+    List of field names that carry the redirect destination URL. Defaults to a sensible built-in list. Override when your export uses non-standard column names.
+  </Accordion>
+  <Accordion title="redirect_type_fields">
+    List of field names that carry the redirect type (e.g., 301, 302). Override alongside `redirect_fields` when using non-standard exports.
+  </Accordion>
+  <Accordion title="field_groups">
+    List of field group names to include in the comparison. Override to narrow or expand what is diffed.
+
+    Default groups: `canonical`, `meta description`, `meta keywords`, `meta refresh`, `h1`, `h2`, `h3`, `word count`, `indexability`, `robots`.
+
+    ```python
+    diff = new.compare(old, field_groups=["canonical", "indexability"])
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  `compare` uses a DuckDB-first projection path for its internal field set. On lean caches it only pulls the fields required for diffing, not full `internal_all` rows.
+</Note>
+
+## `CrawlDiff` object
+
+`compare` returns a `CrawlDiff` object with the following attributes and methods.
+
+### Change buckets
+
+| Attribute | Type | Description |
+|---|---|---|
+| `added_pages` | `list` | URLs present in the new crawl but not the old one. |
+| `removed_pages` | `list` | URLs present in the old crawl but not the new one. |
+| `status_changes` | `list[StatusChange]` | Pages whose HTTP status code changed. |
+| `title_changes` | `list[TitleChange]` | Pages whose title field value changed. |
+| `redirect_changes` | `list[RedirectChange]` | Pages whose redirect destination changed. |
+| `field_changes` | `list[FieldChange]` | All other field-level changes (canonical, meta, headings, word count, indexability, robots). |
+
+### `StatusChange` objects
+
+Each item in `diff.status_changes` is a `StatusChange` with three fields:
+
+```python
+for change in diff.status_changes:
+    print(change.url)        # the page URL
+    print(change.old_status) # HTTP status in the old crawl
+    print(change.new_status) # HTTP status in the new crawl
+```
+
+### `FieldChange` objects
+
+Each item in `diff.field_changes` is a `FieldChange`:
+
+```python
+for change in diff.field_changes:
+    print(change.url)       # the page URL
+    print(change.field)     # field name, e.g. "Canonical Link Element 1"
+    print(change.old_value) # value in the old crawl
+    print(change.new_value) # value in the new crawl
+```
+
+### `.summary()`
+
+Returns a `dict` with change counts across all buckets.
+
+```python
+print(diff.summary())
+# {
+#   "added": 12,
+#   "removed": 3,
+#   "status_changes": 8,
+#   "title_changes": 5,
+#   "redirect_changes": 2,
+#   "field_changes": 41
+# }
+```
+
+### `.to_rows()`
+
+Flattens all change buckets into a single list of dicts — useful for export, CSV writing, or bulk dataframe construction.
+
+```python
+rows = diff.to_rows()
+# Each row includes at minimum: url, change_type, field, old_value, new_value
+```
+
+### `.to_pandas()` / `.to_polars()`
+
+Convert the flattened diff to a pandas `DataFrame` or polars `DataFrame` directly.
+
+```python
+import pandas as pd
+from screamingfrog import Crawl
+
+old = Crawl.load("./crawl-2024-01.dbseospider")
+new = Crawl.load("./crawl-2024-02.dbseospider")
+
+diff = new.compare(old)
+
+df = diff.to_pandas()
+print(df["change_type"].value_counts())
+```
+
+```python
+from screamingfrog import Crawl
+
+old = Crawl.load("./crawl-2024-01.dbseospider")
+new = Crawl.load("./crawl-2024-02.dbseospider")
+
+diff = new.compare(old)
+
+lf = diff.to_polars()
+print(lf.group_by("change_type").agg(pl.count()))
+```
+
+<Note>
+  `to_pandas()` and `to_polars()` require `pandas` or `polars` to be installed. They are optional dependencies not included in the base install.
+</Note>
+
+## Change types tracked
+
+The following change types are captured by default:
+
+<AccordionGroup>
+  <Accordion title="Status changes">
+    HTTP status code changes between the two crawls (e.g., 200 → 404, 301 → 200).
+  </Accordion>
+  <Accordion title="Title changes">
+    Changes to the `Title 1` field (or custom `title_fields`). Detects additions, removals, and rewrites.
+  </Accordion>
+  <Accordion title="Redirect changes">
+    Changes to the redirect destination URL or redirect type. Best-effort and depends on the columns available in the export.
+  </Accordion>
+  <Accordion title="Canonical changes">
+    Changes to `Canonical Link Element 1` and `Canonical Link Element 1 Status`.
+  </Accordion>
+  <Accordion title="Meta description / keywords / refresh">
+    Changes to `Meta Description 1`, `Meta Keywords 1`, and `Meta Refresh`.
+  </Accordion>
+  <Accordion title="H1 / H2 / H3">
+    Changes to the primary heading fields (`H1-1`, `H2-1`, `H3-1`).
+  </Accordion>
+  <Accordion title="Word count">
+    Changes to the `Word Count` field.
+  </Accordion>
+  <Accordion title="Indexability">
+    Changes to `Indexability` or `Indexability Status`.
+  </Accordion>
+  <Accordion title="Robots and directives">
+    Changes to `Meta Robots 1`, `X-Robots-Tag 1`, and the robots directives summary.
+  </Accordion>
+</AccordionGroup>
+
+## Filtering diff results
+
+Because each change bucket is a plain Python list, you can filter with standard list comprehensions:
+
+```python
+from screamingfrog import Crawl
+
+old = Crawl.load("./crawl-2024-01.dbseospider")
+new = Crawl.load("./crawl-2024-02.dbseospider")
+
+diff = new.compare(old)
+
+# Pages that went from 200 to 404
+newly_broken = [
+    c for c in diff.status_changes
+    if c.old_status == 200 and c.new_status == 404
+]
+
+# Indexability changes only
+indexability_changes = [
+    c for c in diff.field_changes
+    if c.field == "Indexability"
+]
+
+for c in indexability_changes:
+    print(c.url, c.old_value, "->", c.new_value)
+```
+
+## Narrowing the diff scope
+
+Use `field_groups` to reduce the comparison to only the fields you care about:
+
+```python
+from screamingfrog import Crawl
+
+old = Crawl.load("./crawl-2024-01.dbseospider")
+new = Crawl.load("./crawl-2024-02.dbseospider")
+
+# Only compare status and canonical fields
+diff = new.compare(old, field_groups=["canonical"])
+
+print(diff.summary())
+```

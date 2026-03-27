@@ -1,0 +1,108 @@
+---
+title: "CSV exports"
+description: "Load a folder of Screaming Frog CSV exports using the CSV backend — no Java, no database, no setup required."
+---
+
+The CSV backend reads a directory of exported `.csv` files that you have already produced from the Screaming Frog UI (or CLI). It is the simplest way to get started if you already have exports on disk.
+
+## Loading from a folder
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./exports")
+```
+
+`Crawl.load` detects a CSV directory automatically when the path is a folder containing `.csv` files. You can also call the constructor directly:
+
+```python
+crawl = Crawl.from_exports("./exports")
+```
+
+## Listing available tabs
+
+Use `crawl.tabs` to see which CSV files are present in the folder:
+
+```python
+print(crawl.tabs)
+# ['internal_all', 'response_codes_all', 'page_titles', ...]
+```
+
+Tab names match the CSV filename without the `.csv` extension, normalized to lowercase with underscores.
+
+## Accessing tabs
+
+Access any tab by its normalized name:
+
+```python
+for row in crawl.tab("response_codes_all"):
+    print(row["Address"], row["Status Code"])
+```
+
+You can also pass the full filename — the extension is optional:
+
+```python
+rows = crawl.tab("page_titles.csv").collect()
+```
+
+## Filtering rows
+
+```python
+# Filter by column value
+for row in crawl.tab("internal_all").filter(status_code="404"):
+    print(row["Address"])
+
+# Apply a GUI filter (matches the Screaming Frog UI filter name)
+for row in crawl.tab("page_titles").filter(gui="Missing"):
+    print(row["Address"], row["Title 1"])
+```
+
+## Page and link views
+
+The first-class `pages()` and `links()` views work with the CSV backend too:
+
+```python
+pages_404 = crawl.pages().filter(status_code=404).collect()
+nofollow_links = crawl.links("in").filter(rel="nofollow").collect()
+```
+
+<Note>
+  `crawl.links("in")` requires an `all_inlinks.csv` file in the export folder. If that file is missing, the view will be empty.
+</Note>
+
+## Limitations
+
+- **No raw SQL.** `crawl.raw()`, `crawl.sql()`, and `crawl.query()` are not supported on the CSV backend.
+- **Filtered CSVs match GUI output.** When you export with a GUI filter active in Screaming Frog, the CSV contains only the filtered rows. This means `crawl.tab("page_titles")` returns whatever rows were in the file — it does not re-apply the filter.
+- **No Derby-mapped fields.** Computed fields like `Indexability` and `Indexability Status` that Derby derives from raw columns are not available unless those columns appear in your exported CSVs.
+- **Coverage depends on what you exported.** Only the tabs you exported from the UI are available. Use `export_profile="kitchen_sink"` with the CLI to produce a broad export.
+
+## When to use the CSV backend
+
+<Tabs>
+  <Tab title="Use CSV when">
+    - You already have exports on disk and do not want to open Derby.
+    - You need exact GUI filter output (e.g., `Page Titles > Missing`).
+    - You are on a machine without Java.
+    - Your workflow is simple: read rows, filter, export.
+  </Tab>
+  <Tab title="Use Derby / DuckDB when">
+    - You need raw SQL access to Derby tables.
+    - You want to query tabs that you did not export.
+    - You need computed fields like `Indexability` or `Indexability Status`.
+    - You are doing large-scale analysis and want DuckDB's columnar performance.
+  </Tab>
+</Tabs>
+
+## Tab metadata helpers
+
+```python
+# List GUI filter names for a tab
+print(crawl.tab_filters("Page Titles"))
+
+# Inspect column headers
+print(crawl.tab_columns("page_titles"))
+
+# Get filters and columns together
+print(crawl.describe_tab("page_titles"))
+```

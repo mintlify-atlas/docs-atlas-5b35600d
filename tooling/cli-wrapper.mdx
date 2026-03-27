@@ -1,0 +1,219 @@
+---
+title: CLI wrapper
+description: Python wrappers around the Screaming Frog SEO Spider CLI for starting crawls, exporting data, and running low-level commands.
+---
+
+The `screamingfrog.cli` module provides Python wrappers around the Screaming Frog SEO Spider command-line interface. Use these helpers to start new crawls, export data from existing crawl files, and run arbitrary CLI commands without building argument lists by hand.
+
+## Environment variable
+
+Set `SCREAMINGFROG_CLI` to the full path of the CLI executable when it is not installed in a standard location:
+
+```bash
+export SCREAMINGFROG_CLI="/opt/screamingfrog/ScreamingFrogSEOSpiderCli"
+```
+
+If the variable is not set, `resolve_cli_path` checks the standard install paths for Windows, macOS, and Linux before falling back to `PATH`.
+
+## `start_crawl`
+
+Crawl a URL and save exports to a directory.
+
+```python
+from screamingfrog import start_crawl
+
+start_crawl(
+    "https://example.com",
+    "./out",
+    save_crawl=True,
+    export_tabs=["Internal:All", "Response Codes:All"],
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `start_url` | `str` | required | The URL to crawl. |
+| `output_dir` | `str \| Path` | required | Directory for exports and crawl output. Created if it does not exist. |
+| `config` | `str \| Path \| None` | `None` | Path to a `.seospiderconfig` file to pass via `--config`. |
+| `auth_config` | `str \| Path \| None` | `None` | Path to an auth config file to pass via `--auth-config`. |
+| `export_tabs` | `Sequence[str] \| None` | `None` | Tab names to export (e.g. `["Internal:All", "Page Titles:Missing"]`). |
+| `bulk_exports` | `Sequence[str] \| None` | `None` | Bulk export names (e.g. `["Links:All Inlinks"]`). |
+| `save_reports` | `Sequence[str] \| None` | `None` | Report names to save. |
+| `export_format` | `str` | `"csv"` | Export file format. |
+| `headless` | `bool` | `True` | Run the CLI in headless mode. |
+| `overwrite` | `bool` | `True` | Overwrite existing output files. |
+| `save_crawl` | `bool` | `False` | Save the crawl as a `.seospider` file. |
+| `timestamped_output` | `bool` | `False` | Add a timestamp suffix to the output folder. |
+| `task_name` | `str \| None` | `None` | Task name passed to `--task-name`. |
+| `project_name` | `str \| None` | `None` | Project name passed to `--project-name`. |
+| `extra_args` | `Sequence[str] \| None` | `None` | Additional raw CLI arguments appended verbatim. |
+| `cli_path` | `str \| None` | `None` | Override the CLI executable path. |
+
+Returns `subprocess.CompletedProcess[str]`.
+
+## `export_crawl`
+
+Export data from an existing `.seospider` or `.dbseospider` crawl file without running a new crawl.
+
+```python
+from screamingfrog import export_crawl
+
+export_crawl(
+    "./crawl.seospider",
+    "./exports",
+    export_tabs=["Internal:All", "Page Titles:Missing"],
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `load_target` | `str` | required | Path to the crawl file to load (`--load-crawl`). |
+| `export_dir` | `str \| Path \| None` | `None` | Destination directory. A temporary directory is used when `None`. |
+| `export_tabs` | `Sequence[str] \| None` | `None` | Tab names to export. Defaults to `["Internal:All"]` when `None` and no profile is set. |
+| `bulk_exports` | `Sequence[str] \| None` | `None` | Bulk export names to include. |
+| `save_reports` | `Sequence[str] \| None` | `None` | Report names to save. |
+| `export_format` | `str` | `"csv"` | Export file format. |
+| `export_profile` | `str \| None` | `None` | Named export profile. Use `"kitchen_sink"` for all tabs and bulk exports. |
+| `headless` | `bool` | `True` | Run the CLI in headless mode. |
+| `overwrite` | `bool` | `True` | Overwrite existing output files. |
+| `force` | `bool` | `False` | Re-export even if `internal_all.csv` already exists in the destination. |
+| `cli_path` | `str \| None` | `None` | Override the CLI executable path. |
+
+Returns the export directory as a `Path`.
+
+<Note>
+`export_crawl` skips the CLI run if `internal_all.csv` (or equivalent) already exists in `export_dir`, unless you pass `force=True`.
+</Note>
+
+## `run_cli`
+
+Low-level passthrough for running arbitrary Screaming Frog CLI commands.
+
+```python
+from screamingfrog.cli import run_cli
+
+result = run_cli(["--version"])
+print(result.stdout)
+```
+
+If the first element of `args` is not the CLI executable, it is prepended automatically.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `args` | `Sequence[str]` | required | CLI arguments. The executable is prepended if not already present. |
+| `cli_path` | `str \| None` | `None` | Override the CLI executable path. |
+| `check` | `bool` | `True` | Raise `RuntimeError` on non-zero exit code. |
+
+Returns `subprocess.CompletedProcess[str]`.
+
+## `resolve_cli_path`
+
+Find the Screaming Frog CLI executable. Checked in this order:
+
+1. The `cli_path` argument, if provided.
+2. The `SCREAMINGFROG_CLI` environment variable.
+3. Standard install paths for the current platform.
+4. `PATH` via `shutil.which`.
+
+```python
+from screamingfrog.cli import resolve_cli_path
+
+cli = resolve_cli_path()
+print(cli)  # e.g. Path('/usr/bin/screamingfrogseospider')
+```
+
+Raises `RuntimeError` if the executable cannot be found.
+
+**Default paths checked per platform:**
+
+<Tabs>
+  <Tab title="Windows">
+    ```
+    C:\Program Files (x86)\Screaming Frog SEO Spider\ScreamingFrogSEOSpiderCli.exe
+    C:\Program Files\Screaming Frog SEO Spider\ScreamingFrogSEOSpiderCli.exe
+    ```
+  </Tab>
+  <Tab title="macOS">
+    ```
+    /Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpider
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```
+    /usr/bin/screamingfrogseospider
+    /usr/local/bin/screamingfrogseospider
+    ```
+  </Tab>
+</Tabs>
+
+## Kitchen-sink export profile
+
+The `"kitchen_sink"` export profile contains every tab and bulk export captured from the Screaming Frog UI — 447 tabs and 146 bulk exports. Pass it to `export_crawl` or `Crawl.load` to get the broadest possible CSV coverage in one shot.
+
+```python
+from screamingfrog import export_crawl
+
+export_crawl(
+    "./crawl.seospider",
+    "./exports_kitchen",
+    export_profile="kitchen_sink",
+)
+```
+
+You can also inspect the profile's tab and bulk-export lists directly:
+
+```python
+from screamingfrog.config import get_export_profile
+
+profile = get_export_profile("kitchen_sink")
+print(len(profile.export_tabs))   # 447
+print(len(profile.bulk_exports))  # 146
+print(profile.export_tabs[:3])
+# ['AI:All', 'AMP:All', 'AMP:Non-200 Response']
+```
+
+`get_export_profile` returns an `ExportProfile` dataclass with two fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `export_tabs` | `list[str]` | All tab names in `"Section:Filter"` format. |
+| `bulk_exports` | `list[str]` | All bulk export names in `"Category:Export"` format. |
+
+<Tip>
+When loading a `.seospider` crawl with `Crawl.load`, pass `export_profile="kitchen_sink"` together with `seospider_backend="csv"` to get full GUI-filter parity across all tabs.
+</Tip>
+
+## `ensure_storage_mode` context manager
+
+Temporarily forces `storage.mode` in Screaming Frog's `spider.config` for the duration of a `with` block, then restores the original value.
+
+This is used internally by `export_dbseospider_from_seospider` and `load_seospider_db_project` to ensure the CLI writes a DB-mode crawl.
+
+```python
+from screamingfrog.cli import ensure_storage_mode
+
+with ensure_storage_mode("DB") as config_path:
+    # spider.config now has storage.mode=DB
+    # run CLI commands here ...
+    pass
+# storage.mode is restored to its original value
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `mode` | `str` | `"DB"` | The storage mode to set (e.g. `"DB"` or `"CRAWL"`). |
+| `config_path` | `str \| Path \| None` | `None` | Path to `spider.config`. Resolved automatically when `None`. |
+
+Yields the resolved `spider.config` path. The config file is created if it did not previously exist and removed on exit in that case.
+
+<Warning>
+`ensure_storage_mode` writes to `spider.config` on disk. It is safe to use inside a `with` block, but do not call it concurrently from multiple processes pointing at the same config file.
+</Warning>

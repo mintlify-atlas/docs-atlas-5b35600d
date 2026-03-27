@@ -1,0 +1,163 @@
+---
+title: ".dbseospider files"
+description: "Load a packaged DB-mode crawl archive (.dbseospider) using Derby or DuckDB for full tab coverage and raw SQL access."
+---
+
+A `.dbseospider` file is a zip archive of a Screaming Frog DB-mode crawl folder. It contains the full Derby database for the crawl, giving you access to all 628+ mapped tabs and raw SQL — without needing Screaming Frog open.
+
+## Loading a .dbseospider file
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+```
+
+By default, `Crawl.load` promotes the Derby source to a DuckDB analytics cache placed next to the `.dbseospider` file (e.g., `./crawl.duckdb`). You can also call the constructor directly:
+
+```python
+crawl = Crawl.from_derby("./crawl.dbseospider")
+```
+
+## DuckDB promotion
+
+DuckDB is the default analysis engine. On the first load, the library creates a sidecar `.duckdb` file. On subsequent loads it reuses that cache, rebuilding only when the Derby source has changed.
+
+```python
+# Default: auto-creates ./crawl.duckdb next to the .dbseospider file
+crawl = Crawl.load("./crawl.dbseospider")
+
+# Specify a custom DuckDB cache path
+crawl = Crawl.load("./crawl.dbseospider", duckdb_path="./analytics/crawl.duckdb")
+
+# Materialize all mapped tabs into the DuckDB cache upfront
+crawl = Crawl.load("./crawl.dbseospider", duckdb_tabs="all")
+```
+
+### Cache freshness
+
+The `duckdb_if_exists` option controls when the cache is rebuilt:
+
+| Value | Behaviour |
+|-------|----------|
+| `"auto"` (default) | Rebuild only when the Derby source fingerprint has changed |
+| `"replace"` | Always rebuild |
+| `"skip"` | Never rebuild; raise an error if the cache does not exist |
+| `"reuse"` | Never rebuild; load from the existing cache even if it is stale |
+
+```python
+# Force a full rebuild
+crawl = Crawl.load("./crawl.dbseospider", duckdb_if_exists="replace")
+
+# Reuse whatever cache exists without checking freshness
+crawl = Crawl.load("./crawl.dbseospider", duckdb_if_exists="reuse")
+```
+
+## Staying on Derby
+
+Pass `dbseospider_backend="derby"` to skip DuckDB promotion and query Derby directly:
+
+```python
+crawl = Crawl.load("./crawl.dbseospider", dbseospider_backend="derby")
+```
+
+<Note>
+  Derby is the source of truth for the crawl. DuckDB is an analytics cache derived from it. Querying Derby directly avoids the cache overhead but is slower for large analytical queries.
+</Note>
+
+## CSV fallback
+
+Derby loads automatically fall back to CLI CSV exports for tabs or columns not yet mapped in Derby. This is enabled by default.
+
+```python
+# Default: CSV fallback enabled, uses the kitchen_sink profile
+crawl = Crawl.load("./crawl.dbseospider")
+
+# Use a custom export profile for fallback
+crawl = Crawl.load("./crawl.dbseospider", csv_fallback_profile="kitchen_sink")
+
+# Disable CSV fallback entirely
+crawl = Crawl.load("./crawl.dbseospider", csv_fallback=False)
+```
+
+Fallback CSV exports are cached next to the `.dbseospider` file by default. Set `csv_fallback_cache_dir` to change this location.
+
+## All loader options
+
+```python
+crawl = Crawl.from_derby(
+    "./crawl.dbseospider",
+    backend="duckdb",            # "duckdb" (default) or "derby"
+    duckdb_path=None,            # custom .duckdb output path
+    duckdb_tabs=None,            # None (lean cache) or "all" (full export)
+    duckdb_if_exists="auto",     # "auto", "replace", "skip", "reuse"
+    csv_fallback=True,           # auto-export missing tabs via CLI
+    csv_fallback_profile="kitchen_sink",
+    csv_fallback_cache_dir=None, # defaults to next to the .dbseospider file
+)
+```
+
+## Raw SQL access
+
+With the Derby backend, you have full SQL access to the underlying tables:
+
+```python
+crawl = Crawl.load("./crawl.dbseospider", dbseospider_backend="derby", csv_fallback=False)
+
+# Raw table rows
+for row in crawl.raw("APP.URLS"):
+    print(row["ENCODED_URL"], row["RESPONSE_CODE"])
+
+# SQL passthrough
+for row in crawl.sql(
+    "SELECT ENCODED_URL, RESPONSE_CODE FROM APP.URLS WHERE RESPONSE_CODE >= ?",
+    [400],
+):
+    print(row)
+
+# Chainable query builder
+rows = (
+    crawl.query("APP", "URLS")
+    .select("ENCODED_URL", "RESPONSE_CODE")
+    .where("RESPONSE_CODE >= ?", 400)
+    .order_by("RESPONSE_CODE DESC")
+    .limit(100)
+    .collect()
+)
+```
+
+<Warning>
+  `raw()`, `sql()`, and `query()` are only available on Derby and DuckDB backends. They are not supported when `dbseospider_backend="csv"`.
+</Warning>
+
+## Java runtime requirement
+
+Derby requires a Java runtime. The library checks these paths automatically on Windows:
+
+- `C:\Program Files (x86)\Screaming Frog SEO Spider\jre`
+- `C:\Program Files\Screaming Frog SEO Spider\jre`
+
+If Java is not found, you will see:
+
+```
+RuntimeError: Java runtime not found. Set JAVA_HOME or add java to PATH.
+```
+
+Fix this by setting `JAVA_HOME`:
+
+```bash
+# Linux / macOS
+export JAVA_HOME=/usr/lib/jvm/java-21
+```
+
+```powershell
+# Windows PowerShell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+```
+
+Verify Java is available:
+
+```bash
+java -version
+```

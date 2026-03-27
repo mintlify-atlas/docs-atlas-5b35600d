@@ -1,0 +1,355 @@
+---
+title: Config patches
+description: Build and apply patches to Screaming Frog .seospiderconfig files using the ConfigPatches API.
+---
+
+`ConfigPatches` provides a fluent Python interface for constructing patch payloads that modify `.seospiderconfig` files. Patches can set arbitrary config keys, add custom extractions, custom search filters, and custom JavaScript extractors.
+
+All classes are importable from the top-level `screamingfrog` package:
+
+```python
+from screamingfrog import ConfigPatches, CustomSearch, CustomJavaScript, write_seospider_config
+```
+
+## `ConfigPatches`
+
+The central object for accumulating config changes. Every method returns `self` so calls can be chained.
+
+```python
+from screamingfrog import ConfigPatches, CustomSearch, CustomJavaScript
+
+patches = ConfigPatches()
+patches.set("mCrawlConfig.mRenderingMode", "JAVASCRIPT")
+patches.add_custom_search(CustomSearch(name="Filter 1", query=".*", data_type="REGEX"))
+patches.add_custom_javascript(
+    CustomJavaScript(name="Extractor 1", javascript="return document.title;")
+)
+
+patch_json = patches.to_json()
+print(patch_json)
+```
+
+### `.set(path, value)`
+
+Set a single config key using dot-notation.
+
+```python
+patches = ConfigPatches()
+patches.set("mCrawlConfig.mRenderingMode", "JAVASCRIPT")
+patches.set("mCrawlConfig.mMaxUrls", 5000)
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `path` | `str` | Dot-separated config key (e.g. `"mCrawlConfig.mMaxUrls"`). |
+| `value` | `Any` | The value to assign. |
+
+Returns `self`.
+
+### `.add_extraction(name, selector, selector_type, extract_mode, attribute)`
+
+Add a custom extraction rule.
+
+```python
+patches.add_extraction(
+    name="H1 Text",
+    selector="//h1",
+    selector_type="XPATH",
+    extract_mode="TEXT",
+)
+
+# Extract an attribute value
+patches.add_extraction(
+    name="OG Image",
+    selector="//meta[@property='og:image']",
+    selector_type="XPATH",
+    extract_mode="ATTRIBUTE",
+    attribute="content",
+)
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | required | Extraction rule label. |
+| `selector` | `str` | required | XPath or CSS selector expression. |
+| `selector_type` | `str` | `"XPATH"` | `"XPATH"` or `"CSS"`. |
+| `extract_mode` | `str` | `"TEXT"` | `"TEXT"` or `"ATTRIBUTE"`. |
+| `attribute` | `str \| None` | `None` | Attribute name to extract when `extract_mode="ATTRIBUTE"`. |
+
+Returns `self`.
+
+### `.remove_extraction(name)` / `.clear_extractions()`
+
+Remove a named extraction or clear all extractions.
+
+```python
+patches.remove_extraction("H1 Text")
+patches.clear_extractions()
+```
+
+Both return `self`.
+
+### `.add_custom_search(rule)`
+
+Add a `CustomSearch` rule. See [`CustomSearch`](#customsearch) below for constructor details.
+
+```python
+patches.add_custom_search(
+    CustomSearch(name="Filter 1", query=".*", data_type="REGEX")
+)
+```
+
+Returns `self`.
+
+### `.remove_custom_search(name)` / `.clear_custom_searches()`
+
+Remove a named custom search or clear all custom searches.
+
+```python
+patches.remove_custom_search("Filter 1")
+patches.clear_custom_searches()
+```
+
+Both return `self`.
+
+### `.add_custom_javascript(rule)`
+
+Add a `CustomJavaScript` rule. See [`CustomJavaScript`](#customjavascript) below.
+
+```python
+patches.add_custom_javascript(
+    CustomJavaScript(name="Extractor 1", javascript="return document.title;")
+)
+```
+
+Returns `self`.
+
+### `.remove_custom_javascript(name)` / `.clear_custom_javascript()`
+
+Remove a named JavaScript rule or clear all JavaScript rules.
+
+```python
+patches.remove_custom_javascript("Extractor 1")
+patches.clear_custom_javascript()
+```
+
+Both return `self`.
+
+### `.to_dict()` / `.to_json(indent=2)`
+
+Serialize the accumulated patches.
+
+```python
+patches = (
+    ConfigPatches()
+    .set("mCrawlConfig.mMaxUrls", 5000)
+    .add_custom_search(CustomSearch(name="Filter 1", query="error", mode="CONTAINS"))
+)
+
+print(patches.to_dict())
+# {
+#   'mCrawlConfig.mMaxUrls': 5000,
+#   'custom_searches': [{'op': 'add', 'name': 'Filter 1', 'query': 'error', ...}]
+# }
+
+print(patches.to_json(indent=2))
+```
+
+| Method | Return type | Description |
+|---|---|---|
+| `.to_dict()` | `dict[str, Any]` | Returns the patch payload as a Python dictionary. |
+| `.to_json(indent=2)` | `str` | Returns the patch payload as a JSON string. |
+
+---
+
+## `CustomSearch`
+
+Defines a single custom search filter rule.
+
+```python
+from screamingfrog import CustomSearch
+
+# Regex search across HTML source
+rule = CustomSearch(
+    name="Filter 1",
+    query=".*",
+    data_type="REGEX",
+)
+
+# Case-sensitive text match scoped to a specific element via XPath
+rule = CustomSearch(
+    name="Noindex Check",
+    query="noindex",
+    mode="CONTAINS",
+    data_type="TEXT",
+    scope="HTML",
+    case_sensitive=True,
+    xpath="//meta[@name='robots']",
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | required | Display name for the custom search rule. |
+| `query` | `str` | required | The search string or pattern. |
+| `mode` | `str` | `"CONTAINS"` | Match mode: `"CONTAINS"`, `"DOES_NOT_CONTAIN"`, `"BEGINS_WITH"`, `"ENDS_WITH"`, `"EQUALS"`, or `"REGEX"`. |
+| `data_type` | `str` | `"TEXT"` | Data type: `"TEXT"` or `"REGEX"`. |
+| `scope` | `str` | `"HTML"` | Scope of the search: `"HTML"`, `"TEXT"`, or `"URL"`. |
+| `case_sensitive` | `bool` | `False` | Whether the match is case-sensitive. |
+| `xpath` | `str \| None` | `None` | Restrict the search to an XPath-selected element. |
+
+---
+
+## `CustomJavaScript`
+
+Defines a JavaScript extraction rule that runs in the page context during rendering.
+
+```python
+from screamingfrog import CustomJavaScript
+
+rule = CustomJavaScript(
+    name="Extractor 1",
+    javascript="return document.title;",
+)
+
+# Custom timeout and content-type scope
+rule = CustomJavaScript(
+    name="Schema Count",
+    javascript="return document.querySelectorAll('script[type=\"application/ld+json\"]').length;",
+    type="EXTRACTION",
+    timeout_secs=15,
+    content_types="text/html",
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | required | Display name for the JavaScript rule. |
+| `javascript` | `str` | required | JavaScript snippet to execute. Must return a value. |
+| `type` | `str` | `"EXTRACTION"` | Rule type. `"EXTRACTION"` is the standard extraction mode. |
+| `timeout_secs` | `int` | `10` | Execution timeout in seconds. |
+| `content_types` | `str` | `"text/html"` | MIME types the rule applies to. |
+
+---
+
+## `write_seospider_config`
+
+Apply a `ConfigPatches` object to a template `.seospiderconfig` file and write the result to a new file.
+
+```python
+from screamingfrog import ConfigPatches, write_seospider_config
+
+patches = ConfigPatches().set("mCrawlConfig.mMaxUrls", 5000)
+
+write_seospider_config(
+    "base.seospiderconfig",
+    "alpha.seospiderconfig",
+    patches,
+)
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `template_config` | `str \| Path` | Path to the source `.seospiderconfig` file to use as a base. |
+| `output_config` | `str \| Path` | Path for the patched output config file. |
+| `patches` | `ConfigPatches \| Mapping[str, Any]` | Patches to apply. Accepts a `ConfigPatches` instance or a plain dict in the same format as `.to_dict()`. |
+| `sf_path` | `str \| None` | Optional path to the Screaming Frog installation, passed to the underlying `SFConfig` loader. |
+
+Returns the output file path as a `Path`.
+
+<Warning>
+`write_seospider_config` requires the `sf-config-builder` package. Install it with:
+
+```bash
+pip install sf-config-builder
+```
+
+If it is not installed, calling this function raises `RuntimeError`.
+</Warning>
+
+## Worked examples
+
+<CodeGroup>
+
+```python Rendering mode + URL limit
+from screamingfrog import ConfigPatches, write_seospider_config
+
+patches = (
+    ConfigPatches()
+    .set("mCrawlConfig.mRenderingMode", "JAVASCRIPT")
+    .set("mCrawlConfig.mMaxUrls", 10000)
+)
+
+write_seospider_config("base.seospiderconfig", "js-crawl.seospiderconfig", patches)
+```
+
+```python Custom search + extraction
+from screamingfrog import (
+    ConfigPatches,
+    CustomSearch,
+    write_seospider_config,
+)
+
+patches = (
+    ConfigPatches()
+    .add_extraction(
+        name="H1 Text",
+        selector="//h1",
+        selector_type="XPATH",
+        extract_mode="TEXT",
+    )
+    .add_custom_search(
+        CustomSearch(
+            name="Noindex Check",
+            query="noindex",
+            mode="CONTAINS",
+            scope="HTML",
+        )
+    )
+)
+
+write_seospider_config("base.seospiderconfig", "custom-extract.seospiderconfig", patches)
+```
+
+```python Custom JavaScript extractor
+from screamingfrog import ConfigPatches, CustomJavaScript, write_seospider_config
+
+patches = (
+    ConfigPatches()
+    .add_custom_javascript(
+        CustomJavaScript(
+            name="Page Title via JS",
+            javascript="return document.title;",
+        )
+    )
+    .add_custom_javascript(
+        CustomJavaScript(
+            name="Schema Count",
+            javascript="return document.querySelectorAll('script[type=\"application/ld+json\"]').length;",
+            timeout_secs=15,
+        )
+    )
+)
+
+write_seospider_config("base.seospiderconfig", "js-extract.seospiderconfig", patches)
+```
+
+```python Inspect patch payload
+from screamingfrog import ConfigPatches, CustomSearch
+
+patches = (
+    ConfigPatches()
+    .set("mCrawlConfig.mMaxUrls", 5000)
+    .add_custom_search(CustomSearch(name="Filter 1", query=".*", data_type="REGEX"))
+)
+
+print(patches.to_json(indent=2))
+```
+
+</CodeGroup>

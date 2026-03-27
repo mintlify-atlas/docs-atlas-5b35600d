@@ -1,0 +1,135 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Screaming Frog API",
+  "projectDescription": "A Python library for querying Screaming Frog SEO Spider crawl data programmatically, supporting Derby, DuckDB, CSV, and SQLite backends.",
+  "theme": "luma",
+  "primaryColor": "#7c7c80",
+  "lightColor": "#151c28",
+  "darkColor": "#f2f2f2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Loading Crawls",
+            "pages": [
+              "loading/overview",
+              "loading/csv-exports",
+              "loading/dbseospider",
+              "loading/seospider",
+              "loading/db-crawl-ids"
+            ]
+          },
+          {
+            "group": "Querying Data",
+            "pages": [
+              "querying/pages-and-links",
+              "querying/tabs",
+              "querying/duckdb-analytics",
+              "querying/raw-sql"
+            ]
+          },
+          {
+            "group": "Audit & Reports",
+            "pages": [
+              "reports/audit-helpers",
+              "reports/crawl-diff",
+              "reports/chain-helpers"
+            ]
+          },
+          {
+            "group": "Tooling",
+            "pages": [
+              "tooling/cli-wrapper",
+              "tooling/dbseospider-packaging",
+              "tooling/config-patches"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/crawl",
+              "api/views",
+              "api/diff-models"
+            ]
+          },
+          {
+            "group": "Config & CLI",
+            "pages": [
+              "api/config-patches",
+              "api/cli"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Load crawl data from .dbseospider, .seospider, CSV exports, SQLite, and DuckDB",
+    "Query all 628+ mapped Screaming Frog GUI tabs without manual exports",
+    "DuckDB analytics layer for fast sitewide page and link queries",
+    "Crawl-over-crawl diff to track status, title, redirect, and indexability changes",
+    "Redirect, canonical, and mixed chain helpers with hop-count filtering",
+    "Audit helpers for broken links, title/meta issues, orphan pages, and indexability",
+    "Chainable SQL query builder and raw SQL escape hatches for Derby/SQLite backends",
+    "CLI wrapper to start crawls, run exports, and manage .seospiderconfig patches",
+    ".dbseospider packaging helpers to archive, distribute, and convert crawl files",
+    "ConfigPatches API to programmatically edit Screaming Frog config files"
+  ],
+  "publicApiSurface": [
+    "Crawl.load(path, ...) -> Crawl",
+    "Crawl.from_exports(export_dir) -> Crawl",
+    "Crawl.from_derby(db_path, ...) -> Crawl",
+    "Crawl.from_duckdb(db_path, namespace=None) -> Crawl",
+    "Crawl.from_seospider(crawl_path, ...) -> Crawl",
+    "Crawl.from_db_id(crawl_id, ...) -> Crawl",
+    "Crawl.duckdb_namespaces(db_path) -> list[str]",
+    "crawl.internal -> InternalView",
+    "crawl.pages() -> PageView",
+    "crawl.links(direction) -> LinkView",
+    "crawl.tab(name) -> TabView",
+    "crawl.section(prefix) -> CrawlSection",
+    "crawl.search(term, fields) -> SearchRowView",
+    "crawl.summary() -> dict",
+    "crawl.inlinks(url) -> Iterator[Link]",
+    "crawl.outlinks(url) -> Iterator[Link]",
+    "crawl.compare(other, ...) -> CrawlDiff",
+    "crawl.redirect_chains(...) -> Iterator[dict]",
+    "crawl.canonical_chains(...) -> Iterator[dict]",
+    "crawl.broken_links_report(...) -> list[dict]",
+    "crawl.title_meta_audit() -> list[dict]",
+    "crawl.indexability_audit() -> list[dict]",
+    "crawl.orphan_pages_report(...) -> list[dict]",
+    "crawl.security_issues_report() -> list[dict]",
+    "crawl.canonical_issues_report() -> list[dict]",
+    "crawl.hreflang_issues_report() -> list[dict]",
+    "crawl.redirect_issues_report() -> list[dict]",
+    "crawl.query(schema, table) -> QueryView",
+    "crawl.raw(table) -> Iterator[dict]",
+    "crawl.sql(query, params) -> Iterator[dict]",
+    "crawl.export_duckdb(path, ...) -> Path",
+    "list_crawls(project_root=None) -> list[CrawlInfo]",
+    "export_crawl(load_target, export_dir, ...) -> Path",
+    "start_crawl(start_url, output_dir, ...) -> CompletedProcess",
+    "pack_dbseospider(project_dir, output_file) -> Path",
+    "pack_dbseospider_from_db_id(db_id, output_file) -> Path",
+    "unpack_dbseospider(dbseospider_file, output_dir) -> Path",
+    "export_dbseospider_from_seospider(crawl_path, output_file) -> Path",
+    "ConfigPatches()",
+    "write_seospider_config(template, output, patches) -> Path"
+  ]
+}

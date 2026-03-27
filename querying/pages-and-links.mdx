@@ -1,0 +1,190 @@
+---
+title: Pages and links
+description: Ergonomic sitewide views for querying pages, links, and URL sections without memorising tab names.
+---
+
+The `Crawl` object exposes first-class views so you can work with pages and links at a high level. These views are backed by DuckDB fast paths when a cache exists, and fall back to the Derby source backend automatically.
+
+## Page view
+
+`crawl.pages()` returns a `PageView` — a sitewide mapped page view backed by the internal page model.
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+# Iterate all pages
+for row in crawl.pages():
+    print(row["Address"], row["Status Code"])
+
+# Filter to 404s and collect as a list
+pages_404 = crawl.pages().filter(status_code=404).collect()
+```
+
+<Tip>
+`crawl.pages()` reads from the internal model directly. It does not force `internal_all` tab materialisation on a cold DuckDB cache, so lightweight page workflows stay fast.
+</Tip>
+
+### Narrow projections with `.select()`
+
+Pass explicit field names to avoid pulling every column. This projects through a shared helper relation on DuckDB caches:
+
+```python
+lightweight = (
+    crawl.pages()
+    .select("Address", "Status Code", "Title 1")
+    .collect()
+)
+
+projected = (
+    crawl.pages()
+    .select("Address", "Status Code", "Title 1")
+    .filter(status_code=404)
+    .collect()
+)
+```
+
+### `crawl.internal` — typed InternalView
+
+`crawl.internal` is a property that returns an `InternalView`, yielding `InternalPage` objects instead of plain dicts:
+
+```python
+for page in crawl.internal.filter(status_code=404):
+    print(page.address)
+```
+
+On Derby-backed crawls, `crawl.internal` also materialises computed mapped fields such as `Indexability` and `Indexability Status`.
+
+## Link views
+
+`crawl.links(direction)` returns a `LinkView` backed by the cached link tabs when available, or the source backend when the cache is lean.
+
+```python
+# Inlinks (pages pointing in)
+nofollow_inlinks = crawl.links("in").filter(rel="nofollow").collect()
+
+# Outlinks (pages pointing out)
+outlinks = crawl.links("out").collect()
+```
+
+### Narrow link projections
+
+```python
+broken_inlinks = (
+    crawl.links("in")
+    .select("Source", "Address", "Status Code")
+    .filter(status_code=404)
+    .collect()
+)
+```
+
+### Per-URL inlinks and outlinks
+
+For Derby-backed crawls, use `crawl.inlinks(url)` and `crawl.outlinks(url)` to read links for a specific URL directly:
+
+```python
+for link in crawl.inlinks("https://example.com/page"):
+    if link.data.get("NoFollow"):
+        print(link.source, "->", link.destination, link.data.get("Rel"))
+```
+
+## Section views
+
+`crawl.section(prefix)` scopes any page or link query to a URL path prefix:
+
+```python
+blog_pages = crawl.section("/blog").pages().collect()
+blog_outlinks = crawl.section("/blog").links("out").collect()
+
+# Access a specific tab scoped to the section
+blog_inlinks = crawl.section("/blog").tab("all_inlinks").collect()
+```
+
+<Note>
+Pass a path prefix like `/blog` for broad matching, or a full URL prefix like `https://example.com/blog` for host-specific scoping.
+</Note>
+
+## Search
+
+`crawl.search(term, fields)` searches across the sitewide page view:
+
+```python
+matching_pages = crawl.search("canonical", fields=["Address", "Title 1"]).collect()
+
+# Search nofollow links
+nofollow_links = crawl.links("in").search("nofollow", fields=["Follow"]).collect()
+```
+
+Omit `fields` to search all available columns. Pass `case_sensitive=True` to use exact case matching.
+
+## View methods reference
+
+All views share a consistent set of methods:
+
+<CardGroup cols={2}>
+  <Card title=".filter(**kwargs)" icon="filter">
+    Apply column filters. Returns the same view type, so calls are chainable.
+  </Card>
+  <Card title=".select(*fields)" icon="columns">
+    Project a subset of fields. Available on `PageView` and `LinkView`.
+  </Card>
+  <Card title=".count()" icon="hash">
+    Return the number of matching rows without collecting them.
+  </Card>
+  <Card title=".collect()" icon="list">
+    Materialise all matching rows as a Python list.
+  </Card>
+  <Card title=".first()" icon="arrow-right">
+    Return the first matching row, or `None`.
+  </Card>
+  <Card title=".to_pandas() / .to_polars()" icon="table">
+    Convert results to a pandas or polars DataFrame (requires optional dependency).
+  </Card>
+</CardGroup>
+
+## Crawl summary
+
+`crawl.summary()` returns a dict of high-level crawl counts for monitoring and automation:
+
+```python
+summary = crawl.summary()
+print(summary)
+# {
+#   "pages": 4832,
+#   "tabs": 52,
+#   "broken_pages": 14,
+#   ...
+# }
+```
+
+<Note>
+Core counts (`pages`, `tabs`) are always populated. Issue-family and chain totals may be `None` on lean DuckDB caches until those tab families are materialised.
+</Note>
+
+## Full example: 404 pages and broken inlinks
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+# All 404 pages
+pages_404 = crawl.pages().filter(status_code=404).collect()
+for row in pages_404:
+    print(row["Address"])
+
+# Inlinks pointing to 404 pages
+broken_inlinks = (
+    crawl.links("in")
+    .select("Source", "Address", "Status Code")
+    .filter(status_code=404)
+    .collect()
+)
+
+# Nofollow inlinks
+nofollow_inlinks = crawl.links("in").filter(rel="nofollow").collect()
+
+# Blog section pages
+blog_pages = crawl.section("/blog").pages().collect()
+```

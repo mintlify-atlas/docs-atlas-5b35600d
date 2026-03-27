@@ -1,0 +1,309 @@
+---
+title: 'CLI wrapper'
+description: 'Python wrappers around the Screaming Frog CLI executable. Start crawls, export crawl data, and manage spider configuration from Python or automation scripts.'
+---
+
+## Overview
+
+The CLI wrapper functions call the Screaming Frog CLI (`ScreamingFrogSEOSpiderCli`) as a subprocess. They resolve the CLI path automatically from standard install locations or from the `SCREAMINGFROG_CLI` environment variable.
+
+```python
+from screamingfrog import start_crawl, export_crawl
+
+# Start a new crawl
+start_crawl(
+    "https://example.com",
+    "./out",
+    save_crawl=True,
+    export_tabs=["Internal:All", "Response Codes:All"],
+)
+
+# Export from an existing .seospider or .dbseospider file
+export_crawl(
+    "./crawl.seospider",
+    "./exports",
+    export_tabs=["Internal:All", "Page Titles:Missing"],
+)
+```
+
+---
+
+## Environment variables
+
+<Info>
+  Set `SCREAMINGFROG_CLI` to the full path of the CLI executable when it is not in a standard install location.
+
+  ```bash
+  export SCREAMINGFROG_CLI="/opt/screamingfrog/ScreamingFrogSEOSpiderCli"
+  ```
+
+  Standard paths searched automatically:
+  - **Windows:** `C:\Program Files (x86)\Screaming Frog SEO Spider\ScreamingFrogSEOSpiderCli.exe`
+  - **macOS:** `/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpider`
+  - **Linux:** `/usr/bin/screamingfrogseospider`, `/usr/local/bin/screamingfrogseospider`
+</Info>
+
+---
+
+## `start_crawl()`
+
+Start a new crawl from a URL via the Screaming Frog CLI.
+
+```python
+from screamingfrog import start_crawl
+
+result = start_crawl(
+    "https://example.com",
+    "./out",
+    config="./my.seospiderconfig",
+    save_crawl=True,
+    export_tabs=["Internal:All", "Response Codes:All"],
+    bulk_exports=["All Inlinks"],
+)
+print(result.returncode)
+```
+
+<ParamField path="start_url" type="str" required>
+  The URL to crawl.
+</ParamField>
+
+<ParamField path="output_dir" type="str | Path" required>
+  Directory where exports and crawl files are saved. Created if it does not exist.
+</ParamField>
+
+<ParamField path="cli_path" type="str | None" default="None">
+  Path to the CLI executable. Falls back to `SCREAMINGFROG_CLI` and standard install locations.
+</ParamField>
+
+<ParamField path="config" type="str | Path | None" default="None">
+  Path to a `.seospiderconfig` file to use for this crawl.
+</ParamField>
+
+<ParamField path="auth_config" type="str | Path | None" default="None">
+  Path to an auth config file.
+</ParamField>
+
+<ParamField path="export_tabs" type="Sequence[str] | None" default="None">
+  Tabs to export (e.g. `["Internal:All", "Page Titles:Missing"]`). When `None`, no tabs are exported unless `export_profile` is set.
+</ParamField>
+
+<ParamField path="bulk_exports" type="Sequence[str] | None" default="None">
+  Bulk exports to run (e.g. `["All Inlinks", "All Outlinks"]`).
+</ParamField>
+
+<ParamField path="save_reports" type="Sequence[str] | None" default="None">
+  Reports to save.
+</ParamField>
+
+<ParamField path="export_format" type="str" default="csv">
+  Export file format passed to `--export-format`.
+</ParamField>
+
+<ParamField path="headless" type="bool" default="True">
+  Run in headless mode (`--headless`).
+</ParamField>
+
+<ParamField path="overwrite" type="bool" default="True">
+  Pass `--overwrite` to overwrite existing export files.
+</ParamField>
+
+<ParamField path="save_crawl" type="bool" default="False">
+  Pass `--save-crawl` to save the crawl as a `.seospider` file.
+</ParamField>
+
+<ParamField path="timestamped_output" type="bool" default="False">
+  Pass `--timestamped-output` to suffix output files with a timestamp.
+</ParamField>
+
+<ParamField path="task_name" type="str | None" default="None">
+  Task name passed to `--task-name`.
+</ParamField>
+
+<ParamField path="project_name" type="str | None" default="None">
+  Project name passed to `--project-name`.
+</ParamField>
+
+<ParamField path="extra_args" type="Sequence[str] | None" default="None">
+  Additional raw CLI arguments appended to the command.
+</ParamField>
+
+**Returns** `subprocess.CompletedProcess[str]`
+
+<Note>
+  Raises `RuntimeError` if the CLI exits with a non-zero return code.
+</Note>
+
+---
+
+## `export_crawl()`
+
+Export data from an existing crawl file (`.seospider` or `.dbseospider`) using `--load-crawl`.
+
+```python
+from screamingfrog import export_crawl
+
+export_dir = export_crawl(
+    "./crawl.seospider",
+    "./exports",
+    export_tabs=["Internal:All", "Page Titles:Missing"],
+    bulk_exports=["All Inlinks"],
+)
+print(export_dir)
+```
+
+<ParamField path="load_target" type="str" required>
+  Path to the crawl file to load (`.seospider` or `.dbseospider`).
+</ParamField>
+
+<ParamField path="export_dir" type="str | Path | None" default="None">
+  Directory to write exports. A temporary directory is created when `None`.
+</ParamField>
+
+<ParamField path="cli_path" type="str | None" default="None">
+  Path to the CLI executable.
+</ParamField>
+
+<ParamField path="export_tabs" type="Sequence[str] | None" default="None">
+  Tabs to export. Defaults to `["Internal:All"]`.
+</ParamField>
+
+<ParamField path="bulk_exports" type="Sequence[str] | None" default="None">
+  Bulk exports to run.
+</ParamField>
+
+<ParamField path="save_reports" type="Sequence[str] | None" default="None">
+  Reports to save.
+</ParamField>
+
+<ParamField path="export_format" type="str" default="csv">
+  Export file format.
+</ParamField>
+
+<ParamField path="headless" type="bool" default="True">
+  Run in headless mode.
+</ParamField>
+
+<ParamField path="overwrite" type="bool" default="True">
+  Overwrite existing export files.
+</ParamField>
+
+<ParamField path="force" type="bool" default="False">
+  Force re-export even if exported files already exist in `export_dir`.
+</ParamField>
+
+<ParamField path="export_profile" type="str | None" default="None">
+  Named export profile (e.g. `"kitchen_sink"`). When set, `export_tabs` and `bulk_exports` are taken from the profile unless explicitly overridden.
+</ParamField>
+
+**Returns** `Path` — the export directory path.
+
+---
+
+## `run_cli()`
+
+Run the Screaming Frog CLI with arbitrary arguments.
+
+```python
+from screamingfrog.cli import run_cli
+
+result = run_cli(["--version"])
+print(result.stdout)
+```
+
+<ParamField path="args" type="Sequence[str]" required>
+  CLI arguments. If the first element is not the CLI executable path, it is prepended automatically.
+</ParamField>
+
+<ParamField path="cli_path" type="str | None" default="None">
+  Override the CLI executable path.
+</ParamField>
+
+<ParamField path="check" type="bool" default="True">
+  Raise `RuntimeError` on non-zero exit code.
+</ParamField>
+
+**Returns** `subprocess.CompletedProcess[str]`
+
+---
+
+## `resolve_cli_path()`
+
+Resolve the Screaming Frog CLI executable path.
+
+Lookup order:
+1. `cli_path` argument
+2. `SCREAMINGFROG_CLI` environment variable
+3. Standard install paths for the current platform
+4. `PATH` (via `shutil.which`)
+
+```python
+from screamingfrog.cli import resolve_cli_path
+
+path = resolve_cli_path()
+print(path)
+```
+
+<ParamField path="cli_path" type="str | None" default="None">
+  Explicit path to the CLI. When provided, this is tried first.
+</ParamField>
+
+**Returns** `Path`
+
+<Warning>
+  Raises `RuntimeError` if the CLI cannot be found. Provide `cli_path` or set `SCREAMINGFROG_CLI`.
+</Warning>
+
+---
+
+## `resolve_spider_config()`
+
+Resolve the `spider.config` file path used by Screaming Frog.
+
+Lookup order:
+1. `config_path` argument
+2. `SCREAMINGFROG_SPIDER_CONFIG` environment variable
+3. `~/.ScreamingFrogSEOSpider/spider.config`
+4. `%APPDATA%/ScreamingFrogSEOSpider/spider.config` (Windows)
+
+```python
+from screamingfrog.cli import resolve_spider_config
+
+path = resolve_spider_config()
+print(path)
+```
+
+<ParamField path="config_path" type="str | Path | None" default="None">
+  Explicit path to `spider.config`.
+</ParamField>
+
+**Returns** `Path`
+
+---
+
+## `ensure_storage_mode()`
+
+Context manager that temporarily forces `storage.mode` to a given value in `spider.config`. Restores the original content on exit.
+
+```python
+from screamingfrog.cli import ensure_storage_mode
+
+with ensure_storage_mode("DB"):
+    # spider.config has storage.mode=DB for this block
+    export_crawl("./crawl.seospider", "./exports")
+
+# spider.config is restored to its original state
+```
+
+<ParamField path="mode" type="str" default="DB">
+  Storage mode value to write (e.g. `"DB"`, `"STORE_ON_DISK"`).
+</ParamField>
+
+<ParamField path="config_path" type="str | Path | None" default="None">
+  Explicit path to `spider.config`. Resolved via `resolve_spider_config()` when `None`.
+</ParamField>
+
+**Returns** context manager — yields the resolved `Path` to `spider.config`.
+
+<Tip>
+  Used internally by `Crawl.from_seospider()` when `ensure_db_mode=True` (the default). You normally do not need to call this directly unless you are managing the CLI yourself.
+</Tip>

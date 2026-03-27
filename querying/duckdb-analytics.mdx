@@ -1,0 +1,209 @@
+---
+title: DuckDB analytics
+description: Export Derby crawls to a fast DuckDB analytics cache, load from .duckdb files, and manage multiple crawls in a single file with namespaces.
+---
+
+DuckDB is the default analysis engine for DB-backed crawl workflows. Derby remains the crawl source-of-truth — DuckDB is a fast analytics layer on top of it.
+
+## Why DuckDB
+
+<CardGroup cols={2}>
+  <Card title="Fast column-store analytics" icon="bolt">
+    DuckDB executes analytical queries over wide page/link tables orders of magnitude faster than Derby's OLTP engine.
+  </Card>
+  <Card title="Zero-dependency portability" icon="box">
+    A `.duckdb` file is a single portable file. Share it with teammates or load it on any machine without installing Java or Screaming Frog.
+  </Card>
+  <Card title="Lean cold-cache start" icon="feather">
+    Default DB-backed loads create a tiny sidecar DuckDB first and keep Derby prewarmed as the lazy source backend. Heavier relations materialise only when you ask for them.
+  </Card>
+  <Card title="Namespace support" icon="folder">
+    One `.duckdb` file can hold multiple crawls under separate namespaces — useful for portfolio reporting and crawl-over-crawl diffs.
+  </Card>
+</CardGroup>
+
+## Exporting to DuckDB
+
+Call `crawl.export_duckdb()` on any Derby-backed crawl to write an analytics cache:
+
+```python
+from screamingfrog import Crawl
+
+derby_crawl = Crawl.load(
+    "./crawl.dbseospider",
+    dbseospider_backend="derby",
+    csv_fallback=False,
+)
+derby_crawl.export_duckdb("./crawl.duckdb", if_exists="auto")
+```
+
+### Export all tabs
+
+Pass `tabs="all"` to materialise every currently available mapped tab into the DuckDB cache:
+
+```python
+derby_crawl.export_duckdb("./crawl.duckdb", tabs="all", if_exists="auto")
+```
+
+### `if_exists="auto"` — smart refresh
+
+The default `if_exists="auto"` rebuilds the DuckDB cache only when the Derby source has changed (detected via source fingerprint). Subsequent loads that find a fresh cache skip the export step entirely.
+
+```python
+# Safe to call repeatedly — rebuilds only when Derby source changed
+derby_crawl.export_duckdb("./crawl.duckdb", if_exists="auto")
+```
+
+## Loading from a DuckDB file
+
+```python
+fast = Crawl.load("./crawl.duckdb")
+
+# Equivalent explicit form
+fast = Crawl.from_duckdb("./crawl.duckdb")
+```
+
+All high-level views work identically against a DuckDB backend:
+
+```python
+pages_404 = fast.pages().filter(status_code=404).collect()
+lightweight = fast.pages().select("Address", "Status Code", "Title 1").collect()
+links = fast.links("in").filter(status_code=404).collect()
+matching = fast.search("canonical", fields=["Address", "Title 1"]).collect()
+```
+
+## Namespaces — multiple crawls in one file
+
+A single `.duckdb` file can store multiple crawls in separate namespaces:
+
+```python
+# Export two crawls into the same file
+derby_crawl.export_duckdb("./portfolio.duckdb", namespace="client-a", if_exists="auto")
+other_crawl.export_duckdb("./portfolio.duckdb", namespace="client-b", if_exists="auto")
+
+# List available namespaces
+namespaces = Crawl.duckdb_namespaces("./portfolio.duckdb")
+print(namespaces)  # ['client-a', 'client-b']
+
+# Load a specific crawl by namespace
+client_a = Crawl.from_duckdb("./portfolio.duckdb", namespace="client-a")
+```
+
+## Cold-cache behaviour
+
+When a DuckDB cache is lean (freshly created or not yet fully materialised), the library uses smart fallback paths:
+
+<Steps>
+  <Step title="Tiny sidecar DuckDB created">
+    A lean sidecar DuckDB is created first. Derby remains prewarmed as the lazy source backend.
+  </Step>
+  <Step title="Source-backed projections on first use">
+    `crawl.pages().select(...)` and `crawl.links(...).select(...)` read directly from the Derby source backend via one-shot projections, avoiding wide `internal_all` / `all_inlinks` materialisation on first use.
+  </Step>
+  <Step title="Narrow helper relations materialised on demand">
+    When DuckDB does need cached subsets, it materialises narrow helper relations (`internal_common`, `links_core`) instead of exporting full wide tables.
+  </Step>
+  <Step title="Full tab materialisation on explicit request">
+    Heavier relations (e.g. full `internal_all`, `all_inlinks`) are written to DuckDB only when explicitly requested via `tabs="all"` or a direct `crawl.tab(...)` call that triggers a cache miss.
+  </Step>
+</Steps>
+
+## Narrow projections
+
+Projected page and link reads avoid wide materialisation on cold caches:
+
+```python
+# Projects through shared internal_common helper — no full internal_all needed
+lightweight = (
+    fast.pages()
+    .select("Address", "Status Code", "Title 1")
+    .collect()
+)
+
+# Projects through shared links_core helper — no full all_inlinks needed
+broken_inlinks = (
+    fast.links("in")
+    .select("Source", "Address", "Status Code")
+    .filter(status_code=404)
+    .collect()
+)
+```
+
+## Standalone export helpers
+
+Export directly from a Derby path or DB crawl ID without loading the full `Crawl` object:
+
+```python
+from screamingfrog.db.duckdb import (
+    export_duckdb_from_derby,
+    export_duckdb_from_db_id,
+)
+
+# Export from a .dbseospider path
+export_duckdb_from_derby(
+    "./crawl.dbseospider",
+    "./crawl.duckdb",
+    tabs="all",
+    if_exists="auto",
+)
+
+# Export directly from an internal DB crawl ID
+export_duckdb_from_db_id(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    "./crawl.duckdb",
+    tabs="all",
+    if_exists="auto",
+)
+```
+
+## Loading a DB crawl ID directly into DuckDB
+
+```python
+crawl = Crawl.load(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    source_type="db_id",
+    db_id_backend="duckdb",
+    duckdb_path="./crawl.duckdb",
+    duckdb_tabs="all",
+)
+```
+
+## DataFrame export
+
+All views support `.to_pandas()` and `.to_polars()` with optional dependencies installed:
+
+```python
+df = fast.pages().filter(status_code=404).to_pandas()
+df_polars = fast.links("in").to_polars()
+```
+
+## Full workflow example
+
+```python
+from screamingfrog import Crawl
+
+# 1. Load Derby crawl and export to DuckDB
+derby_crawl = Crawl.load("./crawl.dbseospider", dbseospider_backend="derby", csv_fallback=False)
+derby_crawl.export_duckdb("./crawl.duckdb", if_exists="auto")
+
+# 2. Load fast DuckDB-backed crawl
+fast = Crawl.load("./crawl.duckdb")
+
+# 3. Run analytics
+pages_404 = fast.pages().filter(status_code=404).collect()
+lightweight = fast.pages().select("Address", "Status Code", "Title 1").collect()
+broken_inlinks = fast.links("in").select("Source", "Address", "Status Code").filter(status_code=404).collect()
+matching_pages = fast.search("canonical", fields=["Address", "Title 1"]).collect()
+
+# 4. Portfolio: two crawls in one file
+other_crawl = Crawl.load("./other.dbseospider", dbseospider_backend="derby", csv_fallback=False)
+derby_crawl.export_duckdb("./portfolio.duckdb", namespace="client-a", if_exists="auto")
+other_crawl.export_duckdb("./portfolio.duckdb", namespace="client-b", if_exists="auto")
+
+client_a = Crawl.from_duckdb("./portfolio.duckdb", namespace="client-a")
+client_b = Crawl.from_duckdb("./portfolio.duckdb", namespace="client-b")
+```
+
+<Warning>
+DuckDB caches are derived from the Derby source-of-truth. If you re-crawl a site, re-export the DuckDB cache or use `if_exists="auto"` to trigger an automatic refresh when the Derby source fingerprint changes.
+</Warning>

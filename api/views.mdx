@@ -1,0 +1,481 @@
+---
+title: 'Views'
+description: 'View types returned by Crawl methods. Views are lazy, filterable, and iterable. Most support .filter(), .collect(), .first(), .count(), .to_pandas(), and .to_polars().'
+---
+
+## InternalView
+
+Returned by `crawl.internal`. Backed by the internal page model and yields `InternalPage` objects.
+
+```python
+for page in crawl.internal.filter(status_code=404):
+    print(page.address, page.status_code)
+
+pages = crawl.internal.filter(status_code=200).collect()
+count = crawl.internal.count()
+```
+
+<Note>
+  Derby-backed `crawl.internal` materializes computed mapped fields such as `Indexability` and `Indexability Status`. DuckDB-backed crawls read these from the cached internal relation.
+</Note>
+
+### Methods
+
+#### `.filter(**kwargs)` → `InternalView`
+
+Narrow results by column value. Keys are column names or snake_case equivalents.
+
+```python
+crawl.internal.filter(status_code=404)
+crawl.internal.filter(indexability="Non-Indexable")
+```
+
+<ParamField path="**kwargs" type="Any">
+  Column name / value pairs. Values are matched by equality.
+</ParamField>
+
+---
+
+#### `.search(term, *, fields, case_sensitive)` → `SearchInternalView`
+
+Search string fields across internal pages.
+
+<ParamField path="term" type="str" required>Search string.</ParamField>
+<ParamField path="fields" type="Sequence[str] | None" default="None">Column names to search. Searches all string fields when `None`.</ParamField>
+<ParamField path="case_sensitive" type="bool" default="False">Case-sensitive matching.</ParamField>
+
+---
+
+#### `.count()` → `int`
+
+Return the number of matching pages.
+
+---
+
+#### `.collect()` → `list[InternalPage]`
+
+Materialize all matching pages into a list.
+
+---
+
+#### `.first()` → `InternalPage | None`
+
+Return the first matching page, or `None` if the view is empty.
+
+---
+
+#### `.to_pandas()` / `.to_polars()`
+
+Return a pandas or Polars DataFrame. Requires the respective library to be installed.
+
+---
+
+## TabView
+
+Returned by `crawl.tab(name)`. Yields rows as `dict[str, Any]`.
+
+```python
+for row in crawl.tab("response_codes_all"):
+    print(row["Address"], row["Status Code"])
+
+# GUI filter shortcut
+for row in crawl.tab("page_titles").filter(gui="Missing"):
+    print(row["Address"])
+```
+
+### Methods
+
+#### `.filter(**kwargs)` → `TabView`
+
+Filter by column value. Supports a special `gui="..."` keyword for applying named GUI filters.
+
+<ParamField path="gui" type="str">
+  Named GUI filter to apply (e.g. `"Missing"`, `"Duplicate"`). Use `crawl.tab_filters(name)` to list available filter names for a tab.
+</ParamField>
+
+<ParamField path="gui_filters" type="list[str]">
+  Apply multiple GUI filters at once.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional column name / value pairs for equality filtering.
+</ParamField>
+
+---
+
+#### `.search(term, *, fields, case_sensitive)` → `SearchRowView`
+
+<ParamField path="term" type="str" required>Search string.</ParamField>
+<ParamField path="fields" type="Sequence[str] | None" default="None">Column names to search.</ParamField>
+<ParamField path="case_sensitive" type="bool" default="False">Case-sensitive matching.</ParamField>
+
+---
+
+#### `.count()` → `int`
+
+Return the total number of matching rows.
+
+---
+
+#### `.collect()` → `list[dict[str, Any]]`
+
+Materialize all matching rows into a list.
+
+---
+
+#### `.first()` → `dict[str, Any] | None`
+
+Return the first matching row, or `None`.
+
+---
+
+#### `.to_pandas()` / `.to_polars()`
+
+Return a pandas or Polars DataFrame.
+
+---
+
+## PageView
+
+Returned by `crawl.pages()`. Backed by the internal page model and yields rows as `dict[str, Any]`. Use `.select()` to project a narrow field subset.
+
+```python
+pages = crawl.pages().filter(status_code=404).collect()
+```
+
+### Methods
+
+#### `.filter(**kwargs)` → `PageView`
+
+Narrow pages by column value.
+
+<ParamField path="**kwargs" type="Any">Column name / value pairs.</ParamField>
+
+---
+
+#### `.select(*fields)` → `ProjectedPageView`
+
+Project a subset of fields. Avoids materializing the full internal page model when only a few columns are needed.
+
+```python
+lightweight = crawl.pages().select("Address", "Status Code", "Title 1").collect()
+```
+
+<ParamField path="*fields" type="str" required>One or more field names to include. At least one field is required.</ParamField>
+
+---
+
+#### `.search(term, *, fields, case_sensitive)` → `SearchRowView`
+
+<ParamField path="term" type="str" required>Search string.</ParamField>
+<ParamField path="fields" type="Sequence[str] | None" default="None">Column names to search.</ParamField>
+<ParamField path="case_sensitive" type="bool" default="False">Case-sensitive matching.</ParamField>
+
+---
+
+#### `.count()` → `int`
+
+Return the number of matching pages.
+
+---
+
+#### `.collect()` → `list[dict[str, Any]]`
+
+Materialize all matching rows.
+
+---
+
+#### `.first()` → `dict[str, Any] | None`
+
+Return the first matching row.
+
+---
+
+#### `.to_pandas()` / `.to_polars()`
+
+Return a pandas or Polars DataFrame.
+
+---
+
+## ProjectedPageView
+
+Returned by `crawl.pages().select(...)`. Behaves like `PageView` but only returns the selected fields. DuckDB-backed crawls use a narrow helper relation to avoid full `internal_all` materialization.
+
+```python
+result = crawl.pages().select("Address", "Status Code", "Title 1").filter(status_code=404).collect()
+```
+
+Supports the same methods as `PageView`: `.filter()`, `.search()`, `.count()`, `.collect()`, `.first()`, `.to_pandas()`, `.to_polars()`.
+
+---
+
+## LinkView
+
+Returned by `crawl.links(direction)`. Yields link rows as `dict[str, Any]`.
+
+```python
+inlinks = crawl.links("in").filter(status_code=404).collect()
+nofollow = crawl.links("in").search("nofollow", fields=["Follow"]).collect()
+```
+
+### Methods
+
+#### `.filter(**kwargs)` → `LinkView`
+
+<ParamField path="**kwargs" type="Any">Column name / value pairs for equality filtering.</ParamField>
+
+---
+
+#### `.select(*fields)` → `ProjectedLinkView`
+
+Project a field subset. Avoids materializing wide inlink/outlink tabs on lean DuckDB caches.
+
+```python
+broken_inlinks = crawl.links("in").select("Source", "Address", "Status Code").filter(status_code=404).collect()
+```
+
+<ParamField path="*fields" type="str" required>One or more field names. At least one is required.</ParamField>
+
+---
+
+#### `.search(term, *, fields, case_sensitive)` → `SearchRowView`
+
+<ParamField path="term" type="str" required>Search string.</ParamField>
+<ParamField path="fields" type="Sequence[str] | None" default="None">Column names to search.</ParamField>
+<ParamField path="case_sensitive" type="bool" default="False">Case-sensitive matching.</ParamField>
+
+---
+
+#### `.count()` → `int`
+
+#### `.collect()` → `list[dict[str, Any]]`
+
+#### `.first()` → `dict[str, Any] | None`
+
+#### `.to_pandas()` / `.to_polars()`
+
+---
+
+## ProjectedLinkView
+
+Returned by `crawl.links(...).select(...)`. Behaves like `LinkView` but only returns selected fields.
+
+Supports the same methods as `LinkView`: `.filter()`, `.search()`, `.count()`, `.collect()`, `.first()`, `.to_pandas()`, `.to_polars()`.
+
+---
+
+## CrawlSection
+
+Returned by `crawl.section(prefix)`. Scopes page, link, and tab views to a URL prefix.
+
+```python
+blog = crawl.section("/blog")
+blog_pages = blog.pages().collect()
+blog_outlinks = blog.links("out").collect()
+blog_inlinks_tab = blog.tab("all_inlinks").collect()
+```
+
+### Methods
+
+#### `.pages()` → `ScopedRowView`
+
+Return a scoped page view matched by `Address`, `URL Encoded Address`, or `Encoded URL`.
+
+---
+
+#### `.links(direction="out")` → `ScopedRowView`
+
+Return a scoped link view. For inlinks, scope matches on `Address`, `Destination`, or `To`. For outlinks, scope matches on `Source`, `From`, or `Address`.
+
+<ParamField path="direction" type="str" default="out">`"in"` or `"out"`.</ParamField>
+
+---
+
+#### `.tab(name, fields=None)` → `ScopedRowView`
+
+Return a scoped view of any tab. By default, scope matches against common URL-bearing columns (`Address`, `Source`, `Destination`, `URL`, `From`, `To`, etc.).
+
+<ParamField path="name" type="str" required>Tab name.</ParamField>
+<ParamField path="fields" type="Sequence[str] | None" default="None">Override the URL fields used for prefix matching.</ParamField>
+
+---
+
+## QueryView
+
+Returned by `crawl.query(schema, table)`. Provides a chainable SQL builder against raw backend tables. DB-backed crawls only.
+
+```python
+rows = (
+    crawl.query("APP", "URLS")
+    .select("ENCODED_URL", "RESPONSE_CODE", "TITLE_1")
+    .where("RESPONSE_CODE >= ?", 400)
+    .order_by("RESPONSE_CODE DESC", "ENCODED_URL ASC")
+    .limit(100)
+    .collect()
+)
+```
+
+### Methods
+
+#### `.select(*columns)` → `QueryView`
+
+Set the columns to select. Defaults to `*`.
+
+<ParamField path="*columns" type="str" required>One or more column names or SQL expressions.</ParamField>
+
+---
+
+#### `.where(sql_fragment, *params)` → `QueryView`
+
+Add a `WHERE` clause. Multiple calls are `AND`-combined.
+
+<ParamField path="sql_fragment" type="str" required>SQL fragment. Use `?` for parameterized values.</ParamField>
+<ParamField path="*params" type="Any">Positional parameters for `?` placeholders.</ParamField>
+
+---
+
+#### `.group_by(*columns)` → `QueryView`
+
+Add a `GROUP BY` clause.
+
+<ParamField path="*columns" type="str" required>One or more column names.</ParamField>
+
+---
+
+#### `.having(sql_fragment, *params)` → `QueryView`
+
+Add a `HAVING` clause. Multiple calls are `AND`-combined.
+
+<ParamField path="sql_fragment" type="str" required>SQL fragment.</ParamField>
+<ParamField path="*params" type="Any">Positional parameters.</ParamField>
+
+---
+
+#### `.order_by(*clauses)` → `QueryView`
+
+Add an `ORDER BY` clause.
+
+<ParamField path="*clauses" type="str" required>Column names or `COLUMN ASC|DESC` expressions.</ParamField>
+
+---
+
+#### `.limit(n)` → `QueryView`
+
+Limit the number of rows returned. Pass `None` to remove an existing limit.
+
+<ParamField path="n" type="int | None" required>Maximum number of rows. Must be a positive integer when not `None`.</ParamField>
+
+---
+
+#### `.to_sql()` → `tuple[str, list[Any]]`
+
+Return the generated SQL string and parameter list without executing the query.
+
+```python
+sql, params = crawl.query("APP", "URLS").where("RESPONSE_CODE = ?", 404).to_sql()
+print(sql)
+```
+
+---
+
+#### `.collect()` → `list[dict[str, Any]]`
+
+Execute the query and return all rows.
+
+---
+
+#### `.first()` → `dict[str, Any] | None`
+
+Execute the query with `LIMIT 1` and return the first row.
+
+---
+
+#### `.to_pandas()` / `.to_polars()`
+
+Return a pandas or Polars DataFrame.
+
+---
+
+## Data models
+
+### `InternalPage`
+
+Represents a single row from the Internal tab. Returned by `InternalView`.
+
+<ResponseField name="address" type="str">
+  The page URL.
+</ResponseField>
+
+<ResponseField name="status_code" type="int | None">
+  HTTP status code.
+</ResponseField>
+
+<ResponseField name="id" type="int | None">
+  Internal row ID (available on DB-backed crawls).
+</ResponseField>
+
+<ResponseField name="data" type="dict[str, Any]">
+  All raw fields from the internal tab, keyed by column name.
+</ResponseField>
+
+**Class methods:**
+
+- `InternalPage.from_csv_row(row: Mapping[str, Any])` → `InternalPage`
+- `InternalPage.from_db_row(columns: list[str], values: tuple[Any, ...])` → `InternalPage`
+- `InternalPage.from_data(data: Mapping[str, Any], *, copy_data: bool = True)` → `InternalPage`
+
+---
+
+### `Link`
+
+Represents a single inlink or outlink row. Returned by `crawl.inlinks()` and `crawl.outlinks()`.
+
+<ResponseField name="source" type="str | None">
+  The source URL of the link.
+</ResponseField>
+
+<ResponseField name="destination" type="str | None">
+  The destination URL of the link.
+</ResponseField>
+
+<ResponseField name="anchor_text" type="str | None">
+  The link anchor text.
+</ResponseField>
+
+<ResponseField name="data" type="dict[str, Any]">
+  All raw fields from the link row.
+</ResponseField>
+
+**Class method:**
+
+- `Link.from_row(row: Mapping[str, Any])` → `Link`
+
+---
+
+### `CrawlInfo`
+
+Metadata for a DB-mode crawl in the `ProjectInstanceData` directory. Returned by `list_crawls()`.
+
+<ResponseField name="db_id" type="str">
+  The crawl UUID folder name.
+</ResponseField>
+
+<ResponseField name="url" type="str">
+  The crawl start URL.
+</ResponseField>
+
+<ResponseField name="urls_crawled" type="int">
+  Number of crawled URLs.
+</ResponseField>
+
+<ResponseField name="percent_complete" type="float">
+  Crawl completion percentage.
+</ResponseField>
+
+<ResponseField name="modified" type="datetime">
+  Last modified timestamp (UTC).
+</ResponseField>
+
+<ResponseField name="path" type="Path">
+  Absolute path to the crawl folder.
+</ResponseField>

@@ -1,0 +1,183 @@
+---
+title: Tab access
+description: Access any of Screaming Frog's 628 mapped export tabs, list available tabs, inspect columns, and apply GUI filters.
+---
+
+In addition to the typed `crawl.pages()` and `crawl.links()` views, you can access any exported tab by name using `crawl.tab()`.
+
+## Accessing a tab
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./exports")
+
+# Access a tab by file name (extension optional)
+for row in crawl.tab("response_codes_all"):
+    print(row["Address"], row["Status Code"])
+```
+
+Tab names are normalised automatically. The following are all equivalent:
+
+- `"Page Titles"` → resolves to `page_titles_all.csv`
+- `"page_titles"` → resolves to `page_titles_all.csv`
+- `"page_titles_all"` → used directly
+
+## Listing available tabs
+
+Use `crawl.tabs` to see which tabs are available for the current backend:
+
+```python
+print(crawl.tabs)
+```
+
+<Note>
+**CSV backend** — exposes any `*.csv` file found in the export directory.
+
+**Derby backend** — exposes all tabs mapped in `schemas/mapping.json` (601 of 628 tabs fully mapped).
+
+**SQLite backend** — supports a smaller high-value set: response codes, page titles, meta description, and `internal_all`.
+</Note>
+
+## Filtering tab rows
+
+Filter using column names (or their `snake_case` equivalents):
+
+```python
+for row in crawl.tab("internal_all").filter(status_code="404"):
+    print(row["Address"])
+```
+
+### GUI filter shortcut
+
+Apply a Screaming Frog GUI filter by name using the `gui` keyword:
+
+```python
+for row in crawl.tab("page_titles").filter(gui="Missing"):
+    print(row["Address"], row["Title 1"])
+```
+
+You can also pass a list of GUI filter names:
+
+```python
+for row in crawl.tab("page_titles").filter(gui_filters=["Missing", "Duplicate"]):
+    print(row["Address"])
+```
+
+<Tip>
+For exact GUI filter behaviour, use CSV exports. The `export_profile="kitchen_sink"` option exports all filter variants from the Screaming Frog UI.
+</Tip>
+
+## Inspecting tab metadata
+
+### List GUI filter names
+
+```python
+print(crawl.tab_filters("Page Titles"))
+# ['Missing', 'Duplicate', 'Over 60 Characters', 'Below 30 Characters', ...]
+```
+
+### Inspect columns
+
+```python
+print(crawl.tab_columns("page_titles"))
+# ['Address', 'Title 1', 'Title 1 Length', 'Title 1 Pixel Width', ...]
+```
+
+### Describe a tab (columns + filters in one call)
+
+```python
+print(crawl.describe_tab("page_titles"))
+# {
+#   'tab': 'page_titles',
+#   'columns': ['Address', 'Title 1', ...],
+#   'filters': ['Missing', 'Duplicate', ...]
+# }
+```
+
+## TabView methods
+
+`crawl.tab()` returns a `TabView`. All standard view methods are available:
+
+```python
+tab = crawl.tab("response_codes_all")
+
+# Count rows
+count = tab.filter(status_code="404").count()
+
+# Collect as list
+rows = tab.filter(status_code="404").collect()
+
+# First row
+first = tab.first()
+
+# Convert to DataFrame
+df = tab.to_pandas()
+df_polars = tab.to_polars()
+```
+
+## Backend differences
+
+<Tabs>
+  <Tab title="CSV">
+    Exposes any `*.csv` file in the export directory. GUI filters rely on exported filter variants — use `export_profile="kitchen_sink"` to get all filter columns.
+
+    ```python
+    crawl = Crawl.load("./exports")
+    for row in crawl.tab("page_titles").filter(gui="Missing"):
+        print(row["Address"])
+    ```
+  </Tab>
+  <Tab title="Derby">
+    Exposes all 601 mapped tabs from `schemas/mapping.json`. Derby natively supports tabs that require computed fields:
+
+    - `Response Codes > Internal Redirect Chain`
+    - `Hreflang > Not Using Canonical`
+
+    Derby-backed `crawl.internal` also materialises computed mapped fields like `Indexability` and `Indexability Status`.
+
+    Derby filters work against mapped expression fields and header-derived fields in both `crawl.internal` and `crawl.tab(...)`.
+
+    ```python
+    crawl = Crawl.load("./crawl.dbseospider", dbseospider_backend="derby", csv_fallback=False)
+    for row in crawl.tab("hreflang_not_using_canonical"):
+        print(row["Address"])
+    ```
+  </Tab>
+  <Tab title="Hybrid Derby+CSV">
+    The default for `Crawl.load` with Derby sources. Exports missing tabs on demand and caches them next to the crawl.
+
+    ```python
+    # Default — CSV fallback enabled
+    crawl = Crawl.load("./crawl.dbseospider")
+    ```
+
+    Set `csv_fallback=False` to disable automatic CSV exports:
+
+    ```python
+    crawl = Crawl.load("./crawl.dbseospider", csv_fallback=False)
+    ```
+  </Tab>
+</Tabs>
+
+## Full example: response codes
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./exports")
+
+# List available tabs
+print(crawl.tabs)
+
+# All 4xx and 5xx pages
+for row in crawl.tab("response_codes_all").filter(status_code="404"):
+    print(row["Address"], row["Status Code"])
+
+# Check available filters
+print(crawl.tab_filters("Response Codes"))
+
+# Apply a GUI filter by name
+for row in crawl.tab("response_codes_all").filter(gui="Internal Client Error (4xx)"):
+    print(row["Address"])
+```

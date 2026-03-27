@@ -1,0 +1,99 @@
+---
+title: "Loading crawls"
+description: "Choose the right loader for your crawl source — CSV exports, .dbseospider, .seospider, DuckDB, or a live DB crawl ID."
+---
+
+The `Crawl.load()` method detects your crawl source automatically from the path or ID you provide. You can also call the specific `from_*` constructors directly when you need explicit control.
+
+## Supported sources
+
+| Source | Example path | Loader | Backend options |
+|--------|-------------|--------|-----------------|
+| CSV export folder | `./exports/` | `Crawl.from_exports()` | CSV only |
+| DB-mode archive | `./crawl.dbseospider` | `Crawl.from_derby()` | DuckDB (default), Derby |
+| Screaming Frog project | `./crawl.seospider` | `Crawl.from_seospider()` | DuckDB (default), Derby, CSV |
+| DuckDB analytics cache | `./crawl.duckdb` | `Crawl.from_duckdb()` | DuckDB only |
+| SQLite database | `./crawl.db` | `Crawl.from_database()` | SQLite only |
+| Live DB crawl ID | UUID string | `Crawl.from_db_id()` | DuckDB (default), Derby, CSV |
+
+## Which format should you use?
+
+<CardGroup cols={2}>
+  <Card title="CSV exports" icon="file-csv" href="/loading/csv-exports">
+    You have already exported tabs from the Screaming Frog UI. Simplest setup, no Java required, no raw SQL.
+  </Card>
+  <Card title=".dbseospider" icon="database" href="/loading/dbseospider">
+    You have a packaged DB-mode crawl archive. Full tab coverage, raw SQL, DuckDB analytics. Requires Java.
+  </Card>
+  <Card title=".seospider" icon="spider" href="/loading/seospider">
+    You have a Screaming Frog project file. Auto-converts to DB mode via the CLI. Requires Screaming Frog CLI.
+  </Card>
+  <Card title="DB crawl ID" icon="fingerprint" href="/loading/db-crawl-ids">
+    You want to query a crawl that is stored locally in Screaming Frog's `ProjectInstanceData` directory.
+  </Card>
+</CardGroup>
+
+## Quick examples
+
+```python
+from screamingfrog import Crawl
+
+# CSV exports folder
+crawl = Crawl.load("./exports")
+
+# DB-mode archive (auto-promotes to DuckDB)
+crawl = Crawl.load("./crawl.dbseospider")
+
+# Screaming Frog project (CLI load -> DB mode -> DuckDB)
+crawl = Crawl.load("./crawl.seospider")
+
+# DuckDB analytics cache (direct)
+crawl = Crawl.load("./crawl.duckdb")
+
+# Live DB crawl ID
+crawl = Crawl.load("138edb21-61d0-41cd-9e9b-725b592a471c", source_type="db_id")
+```
+
+## Common options
+
+These options apply across Derby-backed loaders (`.dbseospider`, `.seospider`, DB crawl IDs).
+
+### `materialize_dbseospider`
+
+When `True` (default for `.seospider` loads), the loader packs a `.dbseospider` archive next to your crawl file so subsequent loads can skip the CLI conversion step.
+
+```python
+# Skip creating the .dbseospider file
+crawl = Crawl.load("./crawl.seospider", materialize_dbseospider=False)
+```
+
+### `dbseospider_overwrite`
+
+Controls whether an existing `.dbseospider` cache is replaced. Defaults to `True` for `.seospider` loads.
+
+```python
+# Reuse an existing .dbseospider cache instead of regenerating it
+crawl = Crawl.load("./crawl.seospider", dbseospider_overwrite=False)
+```
+
+### `csv_fallback` and `csv_fallback_profile`
+
+Derby loads automatically fall back to CLI CSV exports for tabs or columns that are not yet mapped in Derby. Set `csv_fallback=False` to disable this, or set `csv_fallback_profile="kitchen_sink"` (the default) to use the bundled full-export list.
+
+```python
+# Disable CSV fallback entirely (Derby only, no automatic exports)
+crawl = Crawl.load("./crawl.dbseospider", csv_fallback=False)
+```
+
+### `duckdb_if_exists`
+
+Controls whether the DuckDB cache is rebuilt. Defaults to `"auto"`, which rebuilds only when the Derby source has changed.
+
+```python
+# Force a full DuckDB rebuild
+crawl = Crawl.load("./crawl.dbseospider", duckdb_if_exists="replace")
+```
+
+<Note>
+  Derby loads require a Java runtime. If `java` is not on your `PATH`, set `JAVA_HOME` to your JRE/JDK directory. Screaming Frog's bundled JRE is detected automatically on Windows.
+</Note>

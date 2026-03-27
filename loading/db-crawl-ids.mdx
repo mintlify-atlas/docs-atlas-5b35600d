@@ -1,0 +1,165 @@
+---
+title: "DB crawl IDs"
+description: "Load a crawl stored in Screaming Frog's local ProjectInstanceData directory by its UUID, without exporting or packaging the crawl first."
+---
+
+When Screaming Frog runs in DB mode, it stores crawls in a local `ProjectInstanceData` directory as UUID-named folders. You can load any of these crawls directly by passing the UUID to `Crawl.load`.
+
+## Discovering available crawls
+
+Use `list_crawls()` to enumerate all crawls stored in your local `ProjectInstanceData` directory:
+
+```python
+from screamingfrog import list_crawls
+
+for info in list_crawls():
+    print(info.db_id, info.url, info.urls_crawled, info.modified)
+```
+
+### `CrawlInfo` fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `db_id` | `str` | UUID folder name for this crawl |
+| `url` | `str` | Crawl start URL |
+| `urls_crawled` | `int` | Number of URLs crawled |
+| `percent_complete` | `float` | Crawl completion percentage |
+| `modified` | `datetime` | Last modified timestamp (UTC) |
+| `path` | `Path` | Absolute path to the crawl folder |
+
+`list_crawls()` reads metadata from the filesystem without opening Derby or starting Java, so it is fast even with many stored crawls.
+
+### Custom `ProjectInstanceData` path
+
+By default, `list_crawls()` looks in Screaming Frog's default data directory for your platform. Pass `project_root` to override:
+
+```python
+crawls = list_crawls(project_root="/data/sf-projects")
+```
+
+## Loading by crawl ID
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("138edb21-61d0-41cd-9e9b-725b592a471c", source_type="db_id")
+```
+
+You can also call the constructor directly:
+
+```python
+crawl = Crawl.from_db_id("138edb21-61d0-41cd-9e9b-725b592a471c")
+```
+
+### Load the most recent crawl
+
+```python
+from screamingfrog import Crawl, list_crawls
+
+latest = list_crawls()[0]
+crawl = Crawl.load(latest.db_id, source_type="db_id")
+```
+
+<Note>
+  `list_crawls()` returns crawls sorted by `modified` descending, so index `0` is the most recently modified crawl.
+</Note>
+
+## Default behavior
+
+By default, `Crawl.from_db_id` locates the `ProjectInstanceData` folder for the given UUID and creates a DuckDB analytics cache inside it (`<project_dir>/crawl.duckdb`). The same auto-freshness policy as `.dbseospider` loads applies.
+
+## Backend options
+
+### DuckDB (default)
+
+```python
+# Default: auto-creates a DuckDB cache inside the project folder
+crawl = Crawl.load("138edb21-61d0-41cd-9e9b-725b592a471c", source_type="db_id")
+
+# Write the DuckDB cache to a custom path
+crawl = Crawl.load(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    source_type="db_id",
+    duckdb_path="./crawl.duckdb",
+)
+
+# Materialize all mapped tabs into DuckDB upfront
+crawl = Crawl.load(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    source_type="db_id",
+    duckdb_tabs="all",
+)
+```
+
+### Derby
+
+Pass `db_id_backend="derby"` to query Derby directly, without a DuckDB cache:
+
+```python
+crawl = Crawl.load(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    source_type="db_id",
+    db_id_backend="derby",
+)
+```
+
+### CSV
+
+Pass `db_id_backend="csv"` to export specific tabs via the CLI and load with the CSV backend:
+
+```python
+crawl = Crawl.load(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    source_type="db_id",
+    db_id_backend="csv",
+    export_dir="./exports",
+    export_tabs=["Internal:All", "Response Codes:All"],
+)
+```
+
+## Exporting a DuckDB cache directly
+
+You can export a DuckDB file from a DB crawl ID without first creating a `Crawl` object:
+
+```python
+from screamingfrog import export_duckdb_from_db_id
+
+export_duckdb_from_db_id(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    "./crawl.duckdb",
+    tabs="all",
+    if_exists="auto",
+)
+```
+
+## `ProjectInstanceData` directory structure
+
+Screening Frog stores DB-mode crawls under:
+
+```
+ProjectInstanceData/
+  <uuid>/
+    results_<timestamp>/
+      sql/          ← Derby database files
+    spider.config
+```
+
+`find_project_dir(crawl_id)` resolves the `results_*/sql` path automatically. You do not need to construct this path manually.
+
+## All loader options
+
+```python
+crawl = Crawl.from_db_id(
+    "138edb21-61d0-41cd-9e9b-725b592a471c",
+    backend="duckdb",            # "duckdb" (default), "derby", or "csv"
+    project_root=None,           # override ProjectInstanceData root
+    duckdb_path=None,            # custom .duckdb output path
+    duckdb_tabs=None,            # None (lean cache) or "all"
+    duckdb_if_exists="auto",     # cache rebuild policy
+    export_dir=None,             # output dir for CSV mode
+    export_tabs=None,            # specific tabs for CSV mode
+    export_profile=None,         # "kitchen_sink" for full CSV export
+    csv_fallback=True,           # auto-export missing Derby tabs
+    csv_fallback_profile="kitchen_sink",
+)
+```

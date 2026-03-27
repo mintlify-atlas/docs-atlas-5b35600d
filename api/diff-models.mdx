@@ -1,0 +1,247 @@
+---
+title: 'Diff models'
+description: 'Data models returned by crawl.compare(). CrawlDiff holds all structural changes between two crawls and provides helpers for summarising, flattening, and exporting results.'
+---
+
+## Overview
+
+Call `crawl.compare(other)` to compare two `Crawl` instances. The returned `CrawlDiff` holds four change buckets (status, title, redirect, field) plus lists of added and removed pages.
+
+```python
+from screamingfrog import Crawl
+
+old = Crawl.load("./crawl-2024-01.dbseospider")
+new = Crawl.load("./crawl-2024-02.dbseospider")
+
+diff = new.compare(old)
+
+print(diff.summary())
+# {'added_pages': 12, 'removed_pages': 3, 'status_changes': 7, ...}
+
+for change in diff.status_changes:
+    print(change.url, change.old_status, "->", change.new_status)
+
+rows = diff.to_rows()  # flat list of dicts for export
+df = diff.to_pandas()
+```
+
+---
+
+## CrawlDiff
+
+Returned by `crawl.compare(other, ...)`. Frozen dataclass.
+
+### Fields
+
+<ResponseField name="added_pages" type="list[str]">
+  URLs present in the new crawl but not in the old crawl.
+</ResponseField>
+
+<ResponseField name="removed_pages" type="list[str]">
+  URLs present in the old crawl but not in the new crawl.
+</ResponseField>
+
+<ResponseField name="status_changes" type="list[StatusChange]">
+  Pages whose HTTP status code changed between the two crawls.
+</ResponseField>
+
+<ResponseField name="title_changes" type="list[TitleChange]">
+  Pages whose title changed.
+</ResponseField>
+
+<ResponseField name="redirect_changes" type="list[RedirectChange]">
+  Pages whose redirect target or redirect type changed.
+</ResponseField>
+
+<ResponseField name="field_changes" type="list[FieldChange]">
+  Pages where one or more of the tracked field groups changed (canonical, meta description, H1-3, word count, indexability, robots directives, etc.).
+</ResponseField>
+
+---
+
+### Methods
+
+#### `.summary()` → `dict[str, int]`
+
+Return counts for each change bucket plus a `total_changes` key.
+
+```python
+print(diff.summary())
+# {
+#   'added_pages': 12,
+#   'removed_pages': 3,
+#   'status_changes': 7,
+#   'title_changes': 22,
+#   'redirect_changes': 4,
+#   'field_changes': 31,
+#   'total_changes': 79,
+# }
+```
+
+---
+
+#### `.to_rows()` → `list[dict[str, Any]]`
+
+Flatten all change buckets into a single list of dicts, each with a `change_type` key.
+
+Each row has at minimum:
+
+| Key | Description |
+| --- | --- |
+| `change_type` | One of `added_page`, `removed_page`, `status_change`, `title_change`, `redirect_change`, `field_change` |
+| `url` | The affected URL |
+
+Additional keys per `change_type`:
+
+<AccordionGroup>
+  <Accordion title="status_change">
+    - `field`: `"Status Code"`
+    - `old_value`: previous status code
+    - `new_value`: new status code
+  </Accordion>
+  <Accordion title="title_change">
+    - `field`: `"Title 1"`
+    - `old_value`: previous title
+    - `new_value`: new title
+  </Accordion>
+  <Accordion title="redirect_change">
+    - `field`: `"Redirect URL"`
+    - `old_value`: previous redirect target
+    - `new_value`: new redirect target
+    - `old_type`: previous redirect type
+    - `new_type`: new redirect type
+  </Accordion>
+  <Accordion title="field_change">
+    - `field`: the field group name (e.g. `"Canonical"`, `"H1-1"`, `"Meta Description"`)
+    - `old_value`: previous value
+    - `new_value`: new value
+  </Accordion>
+</AccordionGroup>
+
+---
+
+#### `.to_pandas()` / `.to_polars()`
+
+Return `diff.to_rows()` as a pandas or Polars DataFrame. Requires the respective library to be installed.
+
+---
+
+## compare() parameters
+
+These parameters on `crawl.compare()` control which fields are diffed.
+
+<ParamField path="other" type="Crawl" required>
+  The baseline crawl to compare against.
+</ParamField>
+
+<ParamField path="title_fields" type="Sequence[str] | None" default="None">
+  Column name candidates for title comparison. Compared left-to-right; the first present value wins. Defaults to `("Title 1", "Title")`.
+</ParamField>
+
+<ParamField path="redirect_fields" type="Sequence[str] | None" default="None">
+  Column name candidates for redirect URL comparison. Defaults to `("Redirect URL", "Redirect URI", "Redirect Destination")`.
+</ParamField>
+
+<ParamField path="redirect_type_fields" type="Sequence[str] | None" default="None">
+  Column name candidates for redirect type comparison. Defaults to `("Redirect Type",)`.
+</ParamField>
+
+<ParamField path="field_groups" type="dict[str, Sequence[str]] | None" default="None">
+  A mapping of field group label → candidate column names. Each group produces `FieldChange` entries. Pass `None` to use the default groups.
+
+  Default field groups:
+  - `Canonical` → `Canonical Link Element 1`, `Canonical Link Element`, …
+  - `Canonical Status`
+  - `Meta Description` → `Meta Description 1`, …
+  - `Meta Keywords` → `Meta Keywords 1`, …
+  - `Meta Refresh` → `Meta Refresh 1`, …
+  - `H1-1`, `H2-1`, `H3-1`
+  - `Word Count`
+  - `Indexability`, `Indexability Status`
+  - `Meta Robots`, `X-Robots-Tag`
+  - `Directives Summary`
+</ParamField>
+
+---
+
+## StatusChange
+
+Frozen dataclass. Represents a page whose HTTP status code changed.
+
+<ResponseField name="url" type="str">
+  The page URL.
+</ResponseField>
+
+<ResponseField name="old_status" type="int | None">
+  Previous HTTP status code.
+</ResponseField>
+
+<ResponseField name="new_status" type="int | None">
+  New HTTP status code.
+</ResponseField>
+
+---
+
+## TitleChange
+
+Frozen dataclass. Represents a page whose title changed.
+
+<ResponseField name="url" type="str">
+  The page URL.
+</ResponseField>
+
+<ResponseField name="old_title" type="str | None">
+  Previous title value.
+</ResponseField>
+
+<ResponseField name="new_title" type="str | None">
+  New title value.
+</ResponseField>
+
+---
+
+## RedirectChange
+
+Frozen dataclass. Represents a page whose redirect target or type changed.
+
+<ResponseField name="url" type="str">
+  The page URL.
+</ResponseField>
+
+<ResponseField name="old_target" type="str | None">
+  Previous redirect destination URL.
+</ResponseField>
+
+<ResponseField name="new_target" type="str | None">
+  New redirect destination URL.
+</ResponseField>
+
+<ResponseField name="old_type" type="str | None">
+  Previous redirect type (e.g. `"301"`).
+</ResponseField>
+
+<ResponseField name="new_type" type="str | None">
+  New redirect type.
+</ResponseField>
+
+---
+
+## FieldChange
+
+Frozen dataclass. Represents a change in any tracked field group.
+
+<ResponseField name="url" type="str">
+  The page URL.
+</ResponseField>
+
+<ResponseField name="field" type="str">
+  The field group label (e.g. `"Canonical"`, `"H1-1"`, `"Meta Description"`).
+</ResponseField>
+
+<ResponseField name="old_value" type="str | None">
+  Previous value of the field.
+</ResponseField>
+
+<ResponseField name="new_value" type="str | None">
+  New value of the field.
+</ResponseField>

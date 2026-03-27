@@ -1,0 +1,145 @@
+---
+title: ".seospider files"
+description: "Load a Screaming Frog .seospider project file by converting it to DB mode via the CLI, then querying it with DuckDB or Derby."
+---
+
+A `.seospider` file is a Screaming Frog project file. Loading it requires the Screaming Frog CLI to open the project in DB mode, which makes the full Derby database available for querying.
+
+## Loading a .seospider file
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.seospider")
+```
+
+This is equivalent to:
+
+```python
+crawl = Crawl.from_seospider("./crawl.seospider")
+```
+
+## Default behavior
+
+<Steps>
+  <Step title="CLI load">
+    The Screaming Frog CLI opens `crawl.seospider` in headless mode. If `ensure_db_mode=True` (default), the library temporarily patches `spider.config` to set `storage.mode=DB`.
+  </Step>
+  <Step title="Materialize .dbseospider">
+    By default (`materialize_dbseospider=True`), the library packs the resulting Derby project folder into a `.dbseospider` file next to the `.seospider` file (e.g., `./crawl.dbseospider`). This archive can be reused on future loads without re-running the CLI.
+  </Step>
+  <Step title="DuckDB cache">
+    The `.dbseospider` file is loaded as a Derby source, which is promoted to a DuckDB analytics cache (e.g., `./crawl.duckdb`) using the same auto-freshness logic as direct `.dbseospider` loads.
+  </Step>
+</Steps>
+
+## Reusing an existing .dbseospider cache
+
+If a `.dbseospider` file already exists next to your `.seospider` file, set `dbseospider_overwrite=False` to reuse it and skip the CLI step:
+
+```python
+crawl = Crawl.load("./crawl.seospider", dbseospider_overwrite=False)
+```
+
+<Tip>
+  After the first load, set `dbseospider_overwrite=False` in scripts that run repeatedly to avoid paying the CLI conversion cost every time.
+</Tip>
+
+## Skipping .dbseospider materialization
+
+Set `materialize_dbseospider=False` to load directly from the `ProjectInstanceData` Derby folder without writing a `.dbseospider` archive to disk:
+
+```python
+crawl = Crawl.load("./crawl.seospider", materialize_dbseospider=False)
+```
+
+This avoids extra disk usage at the cost of not having a portable archive for future loads.
+
+## CSV mode
+
+Pass `seospider_backend="csv"` to use the CLI export backend instead of DB mode. The CLI exports the tabs you specify to a CSV folder, which is loaded with the CSV backend:
+
+```python
+# Export specific tabs and load as CSV
+crawl = Crawl.load(
+    "./crawl.seospider",
+    seospider_backend="csv",
+    export_dir="./exports",
+    export_tabs=["Internal:All", "External:All", "Response Codes:All"],
+)
+```
+
+### Kitchen-sink export profile
+
+Use `export_profile="kitchen_sink"` to export all tabs and bulk exports captured from the Screaming Frog UI:
+
+```python
+crawl = Crawl.load(
+    "./crawl.seospider",
+    seospider_backend="csv",
+    export_dir="./exports_full",
+    export_profile="kitchen_sink",
+)
+```
+
+<Note>
+  `export_profile="kitchen_sink"` uses the bundled export list from `screamingfrog.config`. It covers all 628+ tabs available in the GUI.
+</Note>
+
+## Staying on Derby
+
+Pass `seospider_backend="derby"` to skip DuckDB promotion after the CLI conversion:
+
+```python
+crawl = Crawl.load("./crawl.seospider", seospider_backend="derby")
+```
+
+## `ensure_db_mode`
+
+By default (`ensure_db_mode=True`), the library patches `spider.config` to set `storage.mode=DB` before running the CLI. Set `ensure_db_mode=False` if your project is already configured for DB mode or if you manage `spider.config` yourself:
+
+```python
+crawl = Crawl.load("./crawl.seospider", ensure_db_mode=False)
+```
+
+## All loader options
+
+```python
+crawl = Crawl.from_seospider(
+    "./crawl.seospider",
+    backend="duckdb",              # "duckdb" (default), "derby", or "csv"
+    materialize_dbseospider=True,  # pack a .dbseospider archive
+    dbseospider_overwrite=True,    # overwrite existing .dbseospider archive
+    dbseospider_path=None,         # custom .dbseospider output path
+    ensure_db_mode=True,           # patch spider.config to force DB mode
+    export_dir=None,               # output dir for CSV mode
+    export_tabs=None,              # specific tabs for CSV mode
+    export_profile=None,           # "kitchen_sink" for full export
+    duckdb_path=None,              # custom .duckdb output path
+    duckdb_tabs=None,              # None (lean cache) or "all"
+    duckdb_if_exists="auto",       # cache rebuild policy
+    csv_fallback=True,             # auto-export missing Derby tabs
+    csv_fallback_profile="kitchen_sink",
+)
+```
+
+## CLI path
+
+The library looks for the Screaming Frog CLI in standard install locations. Set `SCREAMINGFROG_CLI` if the executable is in a non-standard path:
+
+```bash
+export SCREAMINGFROG_CLI="/opt/screaming-frog/ScreamingFrogSEOSpider"
+```
+
+Or pass `cli_path` directly:
+
+```python
+crawl = Crawl.load(
+    "./crawl.seospider",
+    cli_path="/opt/screaming-frog/ScreamingFrogSEOSpider",
+)
+```
+
+<Warning>
+  `.seospider` loading requires a local Screaming Frog CLI installation. If the CLI is not found, the load will raise a `RuntimeError`.
+</Warning>

@@ -1,0 +1,361 @@
+---
+title: 'Config patches'
+description: 'Build and apply JSON patches to Screaming Frog .seospiderconfig files. ConfigPatches provides a fluent API for setting config values, managing custom extractions, custom searches, and custom JavaScript rules.'
+---
+
+## Overview
+
+`ConfigPatches` builds a patch payload for the `sf-config-builder` Java library. Use it to modify `.seospiderconfig` files without manually editing XML.
+
+```python
+from screamingfrog import ConfigPatches, CustomSearch, CustomJavaScript, write_seospider_config
+
+patches = ConfigPatches()
+patches.set("mCrawlConfig.mRenderingMode", "JAVASCRIPT")
+patches.add_custom_search(CustomSearch(name="Filter 1", query=".*", data_type="REGEX"))
+patches.add_custom_javascript(
+    CustomJavaScript(name="Extractor 1", javascript="return document.title;")
+)
+
+patch_json = patches.to_json()
+
+write_seospider_config(
+    "base.seospiderconfig",
+    "patched.seospiderconfig",
+    patches,
+)
+```
+
+<Warning>
+  `write_seospider_config()` requires the `sf-config-builder` package: `pip install sf-config-builder`
+</Warning>
+
+---
+
+## ConfigPatches
+
+Mutable dataclass. All mutating methods return `self` for chaining.
+
+### `set()`
+
+Set a scalar config value by dotted path.
+
+```python
+patches.set("mCrawlConfig.mMaxUrls", 5000)
+patches.set("mCrawlConfig.mRenderingMode", "JAVASCRIPT")
+```
+
+<ParamField path="path" type="str" required>
+  Dotted config path (e.g. `"mCrawlConfig.mMaxUrls"`).
+</ParamField>
+
+<ParamField path="value" type="Any" required>
+  The value to set.
+</ParamField>
+
+**Returns** `ConfigPatches`
+
+---
+
+### `add_extraction()`
+
+Add a custom extraction rule.
+
+```python
+patches.add_extraction(
+    name="Schema Type",
+    selector="//script[@type='application/ld+json']",
+    selector_type="XPATH",
+    extract_mode="TEXT",
+)
+```
+
+<ParamField path="name" type="str" required>
+  Display name for the extraction.
+</ParamField>
+
+<ParamField path="selector" type="str" required>
+  XPath or CSS selector expression.
+</ParamField>
+
+<ParamField path="selector_type" type="str" default="XPATH">
+  Selector type. One of `"XPATH"` or `"CSS_PATH"`.
+</ParamField>
+
+<ParamField path="extract_mode" type="str" default="TEXT">
+  Extraction mode. One of `"TEXT"`, `"HTML"`, `"ATTRIBUTE"`.
+</ParamField>
+
+<ParamField path="attribute" type="str | None" default="None">
+  HTML attribute name. Required when `extract_mode="ATTRIBUTE"`.
+</ParamField>
+
+**Returns** `ConfigPatches`
+
+---
+
+### `remove_extraction()`
+
+Remove an existing extraction rule by name.
+
+<ParamField path="name" type="str" required>Name of the extraction to remove.</ParamField>
+
+**Returns** `ConfigPatches`
+
+---
+
+### `clear_extractions()`
+
+Remove all custom extraction rules.
+
+**Returns** `ConfigPatches`
+
+---
+
+### `add_custom_search()`
+
+Add a custom search rule.
+
+```python
+from screamingfrog import CustomSearch
+
+patches.add_custom_search(CustomSearch(name="Filter 1", query=".*", data_type="REGEX"))
+```
+
+<ParamField path="rule" type="CustomSearch" required>
+  A `CustomSearch` instance.
+</ParamField>
+
+**Returns** `ConfigPatches`
+
+---
+
+### `remove_custom_search()`
+
+Remove a custom search rule by name.
+
+<ParamField path="name" type="str" required>Name of the rule to remove.</ParamField>
+
+**Returns** `ConfigPatches`
+
+---
+
+### `clear_custom_searches()`
+
+Remove all custom search rules.
+
+**Returns** `ConfigPatches`
+
+---
+
+### `add_custom_javascript()`
+
+Add a custom JavaScript rule.
+
+```python
+from screamingfrog import CustomJavaScript
+
+patches.add_custom_javascript(
+    CustomJavaScript(name="Extractor 1", javascript="return document.title;")
+)
+```
+
+<ParamField path="rule" type="CustomJavaScript" required>
+  A `CustomJavaScript` instance.
+</ParamField>
+
+**Returns** `ConfigPatches`
+
+---
+
+### `remove_custom_javascript()`
+
+Remove a custom JavaScript rule by name.
+
+<ParamField path="name" type="str" required>Name of the rule to remove.</ParamField>
+
+**Returns** `ConfigPatches`
+
+---
+
+### `clear_custom_javascript()`
+
+Remove all custom JavaScript rules.
+
+**Returns** `ConfigPatches`
+
+---
+
+### `to_dict()` → `dict[str, Any]`
+
+Return the complete patch payload as a Python dict.
+
+---
+
+### `to_json(indent=2)` → `str`
+
+Return the complete patch payload as a JSON string.
+
+<ParamField path="indent" type="int" default="2">JSON indentation level.</ParamField>
+
+---
+
+## CustomSearch
+
+Frozen dataclass. Represents a custom search rule for `ConfigPatches`.
+
+```python
+from screamingfrog import CustomSearch
+
+rule = CustomSearch(
+    name="Filter 1",
+    query=".*",
+    mode="REGEX",
+    data_type="TEXT",
+    scope="HTML",
+    case_sensitive=False,
+)
+```
+
+### Fields
+
+<ResponseField name="name" type="str">
+  Display name for the custom search filter.
+</ResponseField>
+
+<ResponseField name="query" type="str">
+  Search query string or regex pattern.
+</ResponseField>
+
+<ResponseField name="mode" type="str" default="CONTAINS">
+  Match mode. Common values: `"CONTAINS"`, `"REGEX"`, `"DOES_NOT_CONTAIN"`, `"BEGINS_WITH"`, `"ENDS_WITH"`.
+</ResponseField>
+
+<ResponseField name="data_type" type="str" default="TEXT">
+  Data type to search. Common values: `"TEXT"`, `"REGEX"`.
+</ResponseField>
+
+<ResponseField name="scope" type="str" default="HTML">
+  Search scope. Common values: `"HTML"`, `"TEXT"`, `"URL"`.
+</ResponseField>
+
+<ResponseField name="case_sensitive" type="bool" default="False">
+  Whether the search is case-sensitive.
+</ResponseField>
+
+<ResponseField name="xpath" type="str | None" default="None">
+  Optional XPath expression to scope the search within the page.
+</ResponseField>
+
+### `to_op()` → `dict[str, Any]`
+
+Return the operation dict for the `ConfigBuilder` patch payload.
+
+---
+
+## CustomJavaScript
+
+Frozen dataclass. Represents a custom JavaScript extraction or rendering rule.
+
+```python
+from screamingfrog import CustomJavaScript
+
+rule = CustomJavaScript(
+    name="Extractor 1",
+    javascript="return document.title;",
+    type="EXTRACTION",
+    timeout_secs=10,
+    content_types="text/html",
+)
+```
+
+### Fields
+
+<ResponseField name="name" type="str">
+  Display name for the JavaScript rule.
+</ResponseField>
+
+<ResponseField name="javascript" type="str">
+  JavaScript source code. The script should return the value to extract.
+</ResponseField>
+
+<ResponseField name="type" type="str" default="EXTRACTION">
+  Rule type. `"EXTRACTION"` extracts a value; other types are spider-version-dependent.
+</ResponseField>
+
+<ResponseField name="timeout_secs" type="int" default="10">
+  Execution timeout in seconds.
+</ResponseField>
+
+<ResponseField name="content_types" type="str" default="text/html">
+  Comma-separated MIME types the script applies to.
+</ResponseField>
+
+### `to_op()` → `dict[str, Any]`
+
+Return the operation dict for the `ConfigBuilder` patch payload.
+
+---
+
+## `write_seospider_config()`
+
+Apply a `ConfigPatches` object to a template `.seospiderconfig` file and write the result.
+
+```python
+from screamingfrog import ConfigPatches, write_seospider_config
+
+patches = ConfigPatches().set("mCrawlConfig.mMaxUrls", 5000)
+
+write_seospider_config(
+    "base.seospiderconfig",
+    "alpha.seospiderconfig",
+    patches,
+)
+```
+
+<ParamField path="template_config" type="str | Path" required>
+  Path to the source `.seospiderconfig` file to use as a template.
+</ParamField>
+
+<ParamField path="output_config" type="str | Path" required>
+  Path to write the patched `.seospiderconfig` file.
+</ParamField>
+
+<ParamField path="patches" type="ConfigPatches | Mapping[str, Any]" required>
+  Patch payload. Either a `ConfigPatches` instance or a raw dict.
+</ParamField>
+
+<ParamField path="sf_path" type="str | None" default="None">
+  Path to the `sf-config-builder` JAR or install directory. Required only when the library cannot be located automatically.
+</ParamField>
+
+**Returns** `Path` — the path to the written output file.
+
+---
+
+## `get_export_profile()`
+
+Load a named export profile from the bundled profile lists.
+
+```python
+from screamingfrog.config import get_export_profile
+
+profile = get_export_profile("kitchen_sink")
+print(len(profile.export_tabs), len(profile.bulk_exports))
+```
+
+<ParamField path="name" type="str" default="kitchen_sink">
+  Profile name. Currently only `"kitchen_sink"` is supported.
+</ParamField>
+
+**Returns** `ExportProfile`
+
+### ExportProfile fields
+
+<ResponseField name="export_tabs" type="list[str]">
+  Ordered list of export tab names (e.g. `"Internal:All"`, `"Page Titles:Missing"`).
+</ResponseField>
+
+<ResponseField name="bulk_exports" type="list[str]">
+  Ordered list of bulk export names.
+</ResponseField>

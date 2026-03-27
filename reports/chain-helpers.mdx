@@ -1,0 +1,201 @@
+---
+title: Chain helpers
+description: Iterate and report on redirect chains, canonical chains, and mixed redirect-plus-canonical chains, with hop count and loop filtering.
+---
+
+Chain helpers let you find multi-hop redirect and canonical paths across your crawl. They expose ergonomic filtering by hop count and loop flag on top of the same underlying tab data that Screaming Frog uses.
+
+<Note>
+  Chain helpers fall back to raw DuckDB traversal on lean caches, so they work without requiring the redirect/canonical chain tabs to be pre-materialized.
+</Note>
+
+## Methods
+
+### `redirect_chains`
+
+Iterates all redirect chains in the crawl.
+
+```python
+crawl.redirect_chains(
+    min_hops: int | None = None,
+    max_hops: int | None = None,
+    loop: bool | None = None,
+) -> Iterator[dict]
+```
+
+### `canonical_chains`
+
+Iterates all canonical chains in the crawl.
+
+```python
+crawl.canonical_chains(
+    min_hops: int | None = None,
+    max_hops: int | None = None,
+    loop: bool | None = None,
+) -> Iterator[dict]
+```
+
+### `redirect_and_canonical_chains`
+
+Iterates chains that contain a mix of redirects and canonicals.
+
+```python
+crawl.redirect_and_canonical_chains(
+    min_hops: int | None = None,
+    max_hops: int | None = None,
+    loop: bool | None = None,
+) -> Iterator[dict]
+```
+
+### `redirect_chain_report`
+
+A collected helper that runs `redirect_chains` and returns the full result as a `list[dict]` instead of a lazy iterator.
+
+```python
+crawl.redirect_chain_report(
+    min_hops: int | None = None,
+    max_hops: int | None = None,
+    loop: bool | None = None,
+) -> list[dict]
+```
+
+This is equivalent to:
+
+```python
+rows = list(crawl.redirect_chains(min_hops=..., max_hops=..., loop=...))
+```
+
+## Parameters
+
+<AccordionGroup>
+  <Accordion title="min_hops">
+    Minimum number of hops (redirects or canonicals) required for a chain to be included. `None` means no lower bound.
+
+    For example, `min_hops=3` returns only chains with 3 or more hops.
+  </Accordion>
+  <Accordion title="max_hops">
+    Maximum number of hops allowed. `None` means no upper bound.
+
+    For example, `max_hops=5` excludes any chains longer than 5 hops.
+  </Accordion>
+  <Accordion title="loop">
+    Filter by whether the chain is a loop:
+
+    - `True` — return only looping chains
+    - `False` — return only non-looping chains
+    - `None` (default) — return all chains regardless of loop status
+  </Accordion>
+</AccordionGroup>
+
+## Row fields
+
+Each yielded `dict` mirrors the columns in the corresponding Screaming Frog tab:
+
+| Method | Key hop-count field | Notes |
+|---|---|---|
+| `redirect_chains` | `Number of Redirects` | |
+| `canonical_chains` | `Number of Canonicals` | |
+| `redirect_and_canonical_chains` | `Number of Redirects/Canonicals` | |
+
+All rows also include `Address` (the chain start URL) and additional chain path fields.
+
+## Examples
+
+### Redirect chains with 3+ hops and no loops
+
+From the README:
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+# Redirect chains with 3+ hops and no loop
+for row in crawl.redirect_chains(min_hops=3, loop=False):
+    print(row["Address"], row.get("Number of Redirects"))
+```
+
+### Canonical chains
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.canonical_chains(min_hops=2):
+    print(row["Address"], row.get("Number of Canonicals"))
+```
+
+### Mixed redirect and canonical chains
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+for row in crawl.redirect_and_canonical_chains(min_hops=4):
+    print(row["Address"], row.get("Number of Redirects/Canonicals"))
+```
+
+### Collected report
+
+When you need a `list` rather than an iterator — for example to pass to pandas:
+
+```python
+import pandas as pd
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+rows = crawl.redirect_chain_report(min_hops=3)
+df = pd.DataFrame(rows)
+print(df[["Address", "Number of Redirects"]].sort_values("Number of Redirects", ascending=False))
+```
+
+### Loop detection
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+# Only looping redirect chains
+for row in crawl.redirect_chains(loop=True):
+    print("Loop:", row["Address"])
+
+# Only looping canonical chains
+for row in crawl.canonical_chains(loop=True):
+    print("Canonical loop:", row["Address"])
+```
+
+## Raw tab access
+
+The chain helpers are thin wrappers over the same underlying tab data. You can access the raw tabs directly via `crawl.tab(...)` if you need unfiltered access or want to apply your own filter logic:
+
+```python
+from screamingfrog import Crawl
+
+crawl = Crawl.load("./crawl.dbseospider")
+
+# Equivalent to crawl.redirect_chains() with no filters
+for row in crawl.tab("redirect_chains"):
+    print(row["Address"], row.get("Number of Redirects"))
+
+# Manual hop-count filter
+long_chains = [
+    r for r in crawl.tab("redirect_chains")
+    if (r.get("Number of Redirects") or 0) > 3
+]
+
+# Canonical chains raw tab
+for row in crawl.tab("canonical_chains"):
+    print(row["Address"], row.get("Number of Canonicals"))
+
+# Mixed chains raw tab
+for row in crawl.tab("redirect_and_canonical_chains"):
+    print(row["Address"], row.get("Number of Redirects/Canonicals"))
+```
+
+<Tip>
+  Prefer the typed chain helpers (`redirect_chains`, `canonical_chains`, `redirect_and_canonical_chains`) over raw tab access when you need hop-count or loop filtering — they handle edge cases like `None` hop counts that raw tab iteration does not guard against.
+</Tip>

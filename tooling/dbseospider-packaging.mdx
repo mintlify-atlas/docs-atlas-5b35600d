@@ -1,0 +1,209 @@
+---
+title: .dbseospider packaging
+description: Helpers for packing, unpacking, and converting Screaming Frog DB-mode crawl folders into portable .dbseospider zip archives.
+---
+
+`.dbseospider` files are zip archives of an internal Screaming Frog `ProjectInstanceData` crawl folder. They let you move, store, and reload DB-mode crawls without keeping a full Screaming Frog installation on the analysis machine.
+
+All packaging helpers are importable directly from the top-level `screamingfrog` package:
+
+```python
+from screamingfrog import (
+    pack_dbseospider,
+    pack_dbseospider_from_db_id,
+    unpack_dbseospider,
+    export_dbseospider_from_seospider,
+    load_seospider_db_project,
+)
+```
+
+## Environment variable
+
+Set `SCREAMINGFROG_PROJECT_DIR` to the full path of the `ProjectInstanceData` directory when it is not in a standard location:
+
+```bash
+export SCREAMINGFROG_PROJECT_DIR="/data/sf/ProjectInstanceData"
+```
+
+If the variable is not set, the helpers check the following default locations in order:
+
+1. `%APPDATA%\ScreamingFrogSEOSpider\ProjectInstanceData` (Windows)
+2. `~/.ScreamingFrogSEOSpider/ProjectInstanceData` (macOS / Linux)
+
+## `pack_dbseospider`
+
+Zip a crawl folder from `ProjectInstanceData` into a `.dbseospider` file.
+
+```python
+from screamingfrog import pack_dbseospider
+
+dbseospider = pack_dbseospider(
+    r"C:\Users\Antonio\.ScreamingFrogSEOSpider\ProjectInstanceData\<project_id>",
+    r"C:\Users\Antonio\my-crawl.dbseospider",
+)
+print(dbseospider)  # WindowsPath('C:/Users/Antonio/my-crawl.dbseospider')
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `project_dir` | `str \| Path` | Path to the crawl subdirectory inside `ProjectInstanceData`. |
+| `output_file` | `str \| Path` | Destination `.dbseospider` file path. The `.dbseospider` extension is added automatically if omitted. |
+
+Returns the output file path as a `Path`.
+
+Raises `FileNotFoundError` if `project_dir` does not exist, and `ValueError` if it is not a directory.
+
+## `pack_dbseospider_from_db_id`
+
+Package a DB-mode crawl by its UUID crawl ID instead of a full directory path.
+
+```python
+from screamingfrog import pack_dbseospider_from_db_id
+
+dbseospider = pack_dbseospider_from_db_id(
+    "7c356a1b-ea14-40f3-b504-36c3046432a2",
+    r"C:\Users\Antonio\my-crawl.dbseospider",
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `db_id` | `str` | required | UUID directory name from `ProjectInstanceData`. |
+| `output_file` | `str \| Path` | required | Destination `.dbseospider` file path. |
+| `project_root` | `str \| Path \| None` | `None` | Override the `ProjectInstanceData` root. Uses `SCREAMINGFROG_PROJECT_DIR` or the default path when `None`. |
+
+Returns the output file path as a `Path`.
+
+<Tip>
+Use `list_crawls()` to discover the available `db_id` values without opening Derby or starting Java.
+
+```python
+from screamingfrog import list_crawls
+
+for info in list_crawls():
+    print(info.db_id, info.url, info.urls_crawled)
+```
+</Tip>
+
+## `unpack_dbseospider`
+
+Extract a `.dbseospider` file into a directory.
+
+```python
+from screamingfrog import unpack_dbseospider
+
+unpack_dbseospider(
+    r"C:\Users\Antonio\my-crawl.dbseospider",
+    r"C:\Users\Antonio\unpacked_crawl",
+)
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `dbseospider_file` | `str \| Path` | Path to the `.dbseospider` zip archive to extract. |
+| `output_dir` | `str \| Path` | Destination directory. Created if it does not exist. |
+
+Returns the output directory path as a `Path`.
+
+Raises `FileNotFoundError` if `dbseospider_file` does not exist.
+
+## `export_dbseospider_from_seospider`
+
+Convert a `.seospider` crawl file into a `.dbseospider` archive in one step. Internally this:
+
+1. Forces `storage.mode=DB` in `spider.config` (unless `ensure_db_mode=False`).
+2. Runs the Screaming Frog CLI via `--load-crawl` to generate a DB crawl in `ProjectInstanceData`.
+3. Detects the newly created crawl directory.
+4. Packages it into a `.dbseospider` file.
+5. Cleans up the temporary export directory (unless `cleanup_exports=False`).
+
+```python
+from screamingfrog import export_dbseospider_from_seospider
+
+dbseospider = export_dbseospider_from_seospider(
+    r"C:\Users\Antonio\schema-discovery\actionnetwork_crawl\crawl.seospider",
+    r"C:\Users\Antonio\actionnetwork.dbseospider",
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `crawl_path` | `str \| Path` | required | Path to the `.seospider` source file. |
+| `output_file` | `str \| Path` | required | Destination `.dbseospider` file path. |
+| `project_root` | `str \| Path \| None` | `None` | Override the `ProjectInstanceData` root. |
+| `spider_config_path` | `str \| Path \| None` | `None` | Override the `spider.config` path used by `ensure_storage_mode`. |
+| `cli_path` | `str \| None` | `None` | Override the CLI executable path. |
+| `export_dir` | `str \| Path \| None` | `None` | Directory for temporary CLI exports. A temp directory is created when `None`. |
+| `export_tabs` | `Iterable[str] \| None` | `None` | Tabs to export during the CLI load. Defaults to `["Internal:All"]`. |
+| `bulk_exports` | `Iterable[str] \| None` | `None` | Bulk exports to include during the CLI load. |
+| `save_reports` | `Iterable[str] \| None` | `None` | Reports to save during the CLI load. |
+| `export_format` | `str` | `"csv"` | Export file format. |
+| `export_profile` | `str \| None` | `None` | Named export profile (e.g. `"kitchen_sink"`). |
+| `headless` | `bool` | `True` | Run the CLI in headless mode. |
+| `overwrite` | `bool` | `True` | Overwrite existing output files. |
+| `ensure_db_mode` | `bool` | `True` | Temporarily force `storage.mode=DB` in `spider.config` before running the CLI. |
+| `cleanup_exports` | `bool` | `True` | Delete the temporary export directory after packaging. |
+
+Returns the output `.dbseospider` file path as a `Path`.
+
+<Warning>
+If your `ProjectInstanceData` directory is in a non-default location, set `SCREAMINGFROG_PROJECT_DIR` or pass `project_root=...`. Without this, the helper cannot detect which directory was newly created by the CLI.
+</Warning>
+
+## `load_seospider_db_project`
+
+Like `export_dbseospider_from_seospider`, but returns the raw DB crawl directory path instead of packaging it. Useful when you want to inspect or manipulate the crawl folder before zipping.
+
+```python
+from screamingfrog.db import load_seospider_db_project
+
+project_dir = load_seospider_db_project(
+    "./crawl.seospider",
+    ensure_db_mode=True,
+    cleanup_exports=True,
+)
+print(project_dir)  # Path to the new crawl dir inside ProjectInstanceData
+```
+
+Accepts the same parameters as `export_dbseospider_from_seospider` except `output_file`. Returns the detected `ProjectInstanceData` crawl directory as a `Path`.
+
+## Full round-trip example
+
+<Steps>
+  <Step title="Convert a .seospider crawl to .dbseospider">
+    ```python
+    from screamingfrog import export_dbseospider_from_seospider
+
+    export_dbseospider_from_seospider(
+        r"C:\Users\Antonio\schema-discovery\actionnetwork_crawl\crawl.seospider",
+        r"C:\Users\Antonio\actionnetwork.dbseospider",
+    )
+    ```
+  </Step>
+  <Step title="Load the archive for analysis">
+    ```python
+    from screamingfrog import Crawl
+
+    crawl = Crawl.load("./actionnetwork.dbseospider")
+    pages_404 = crawl.pages().filter(status_code=404).collect()
+    ```
+  </Step>
+  <Step title="Unpack if you need to inspect the raw Derby files">
+    ```python
+    from screamingfrog import unpack_dbseospider
+
+    unpack_dbseospider(
+        r"C:\Users\Antonio\actionnetwork.dbseospider",
+        r"C:\Users\Antonio\unpacked_actionnetwork",
+    )
+    ```
+  </Step>
+</Steps>

@@ -1,122 +1,94 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Screaming Frog API",
+  "theme": "luma",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#7c7c80",
+    "light": "#151c28",
+    "dark": "#f2f2f2"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/ed1ea708-4249-4d42-9233-93fde61f32fc.jpg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Amaculus/screaming-frog-api"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Amaculus/screaming-frog-api"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Loading Crawls",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "loading/overview",
+              "loading/csv-exports",
+              "loading/dbseospider",
+              "loading/seospider",
+              "loading/db-crawl-ids"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Querying Data",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "querying/pages-and-links",
+              "querying/tabs",
+              "querying/duckdb-analytics",
+              "querying/raw-sql"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Audit & Reports",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "reports/audit-helpers",
+              "reports/crawl-diff",
+              "reports/chain-helpers"
+            ]
+          },
+          {
+            "group": "Tooling",
+            "pages": [
+              "tooling/cli-wrapper",
+              "tooling/dbseospider-packaging",
+              "tooling/config-patches"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core",
             "pages": [
-              "api-reference/introduction"
+              "api/crawl",
+              "api/views",
+              "api/diff-models"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Config & CLI",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/config-patches",
+              "api/cli"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }
